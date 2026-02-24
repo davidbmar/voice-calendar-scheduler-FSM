@@ -344,14 +344,16 @@ class SchedulingSession:
             if next_state:
                 # Auto-execute any tool steps in sequence
                 tool_response = await self._run_tool_steps()
-                if tool_response:
-                    # After tool steps, we may be on an LLM step
-                    # that needs an initial prompt
-                    current = self._current_state()
-                    if current and current.step_type == "llm":
-                        follow_up = await self._get_step_opening(current)
-                        return f"{text_response} {follow_up}".strip()
-                    return text_response
+                # After transition (and any tool steps), generate the
+                # opening for the next LLM state so the caller knows
+                # what to say. This covers both LLM→LLM transitions
+                # (hello → greet_and_gather) and tool→LLM transitions
+                # (search_listings → present_options).
+                current = self._current_state()
+                if current and current.step_type == "llm":
+                    follow_up = await self._get_step_opening(current)
+                    return f"{text_response} {follow_up}".strip()
+                return text_response
 
             return text_response
         else:
@@ -415,6 +417,11 @@ class SchedulingSession:
 
         # Use data-driven prompt generation based on state ID
         prompts = {
+            "greet_and_gather": (
+                "The caller just greeted you. Now ask what they're looking for — "
+                "bedrooms, budget, preferred area, move-in date. "
+                "Be warm and conversational, ask one or two questions to start."
+            ),
             "present_options": (
                 "Present the apartment search results to the caller. "
                 "Describe the top options naturally."

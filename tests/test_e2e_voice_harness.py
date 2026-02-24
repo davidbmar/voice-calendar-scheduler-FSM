@@ -442,27 +442,36 @@ class TestResponseQuality:
         """When LLM includes a JSON signal, the spoken text should be clean."""
         session, _, _ = _make_wired_session()
 
-        # Use a JSON signal with an intent that doesn't match any transition
-        # in the hello state, so the FSM stays put and we test JSON stripping
-        # without triggering tool step execution.
+        # JSON signal causes a transition (hello's wildcard catches all intents).
+        # After transition, _get_step_opening() fires a second LLM call.
+        # Use a sequential mock: first call returns JSON, second returns clean text.
         response_with_json = (
             "Two bedrooms in downtown sounds wonderful! "
             "And a budget of two thousand a month, great options.\n"
-            '```json\n{"bedrooms": 2, "budget": 2000, "intent": "partial"}\n```'
+            '```json\n{"bedrooms": 2, "budget": 2000, "intent": "greeted"}\n```'
         )
+        follow_up = "So what kind of apartment are you looking for? How many bedrooms and what area?"
+
+        call_count = 0
+        async def sequential_mock(system, messages, tools, provider, model):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return response_with_json, []
+            return follow_up, []
 
         with patch("engine.orchestrator.llm_generate_with_tools",
                     side_effect=_make_mock_llm_generate_with_tools(GREETING_RESPONSE)):
             await session.get_greeting()
 
         with patch("engine.orchestrator.llm_generate_with_tools",
-                    side_effect=_make_mock_llm_generate_with_tools(response_with_json)):
+                    side_effect=sequential_mock):
             response = await session.handle_utterance(
                 "I need two bedrooms downtown, budget about 2000"
             )
 
         assert_response_quality(response)
-        assert "bedrooms" in response.lower() or "downtown" in response.lower()
+        assert "bedrooms" in response.lower() or "downtown" in response.lower() or "apartment" in response.lower()
 
     @pytest.mark.asyncio
     async def test_multi_turn_quality(self):
