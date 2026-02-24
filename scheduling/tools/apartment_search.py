@@ -1,15 +1,10 @@
 """Apartment search tool — queries the RAG service for matching listings."""
 
 import os
-import sys
 from typing import Any
 
 import httpx
 
-# Add engine-repo to path so we can import BaseTool
-sys.path.insert(
-    0, os.path.join(os.path.dirname(__file__), "..", "..", "engine-repo")
-)
 from voice_assistant.tools.base import BaseTool
 
 RAG_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:8000")

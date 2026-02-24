@@ -48,7 +48,8 @@ Caller (phone/browser)
 
 - Python 3.11+ (3.13 recommended)
 - Git (for submodules)
-- Docker (optional, for RAG service)
+- Docker (optional, for RAG apartment search)
+- Node.js (optional, for the visual workflow editor)
 
 ### Quick Start
 
@@ -60,11 +61,12 @@ cd voice-calendar-scheduler-FSM
 # Run setup (creates venv, installs deps, runs tests)
 ./scripts/setup.sh
 
-# Edit .env with your API keys
+# Configure — copy the example and add your API keys
+cp .env.example .env
 $EDITOR .env
 
-# Start the server
-./scripts/run.sh
+# Start everything (RAG + Backend + Editor)
+./scripts/start.sh
 ```
 
 The setup script:
@@ -73,6 +75,7 @@ The setup script:
 - Creates a virtual environment in `.venv/`
 - Installs all dependencies (core, LLM, integrations, voice)
 - Creates `.env` from `.env.example`
+- Installs git hooks and builds the project memory index
 - Runs verification and tests
 
 Use `./scripts/setup.sh --quick` to skip heavy voice packages (faster-whisper, piper-tts, aiortc) for faster setup during development.
@@ -86,33 +89,66 @@ Copy `.env.example` to `.env` and fill in your credentials:
 | `LLM_PROVIDER` | Yes | `claude` or `ollama` |
 | `ANTHROPIC_API_KEY` | If claude | Claude API key |
 | `OLLAMA_MODEL` | If ollama | Model name (e.g. `qwen2.5:7b`) |
+| `ADMIN_API_KEY` | Recommended | Secures admin/debug endpoints (see [Security](#security)) |
 | `TWILIO_ACCOUNT_SID` | For phone | Twilio account SID |
 | `TWILIO_AUTH_TOKEN` | For phone | Twilio auth token |
 | `TWILIO_PHONE_NUMBER` | For phone | Your Twilio number |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | For booking | Path to service account JSON |
 | `GOOGLE_CALENDAR_ID` | For booking | Calendar ID (default: `primary`) |
 | `RAG_SERVICE_URL` | For search | RAG endpoint (default: `http://localhost:8000`) |
-| `PORT` | No | Server port (default: `8080`) |
+| `HOST` | No | Bind address (default: `127.0.0.1`) |
+| `PORT` | No | Server port (default: `8090`) |
+| `DEBUG` | No | Debug mode — relaxes auth for local dev (default: `false`) |
 | `ICE_SERVERS_JSON` | No | Fallback ICE servers for WebRTC |
 
 ## Running
 
+### Recommended: `start.sh` (starts everything)
+
+The easiest way to run the app. This single script validates your config, starts all three components in order, waits for each to become healthy, and shows a status dashboard.
+
 ```bash
-# Start the server (default port 8090)
-./scripts/run.sh
+# Start everything — RAG, Backend, and Editor
+./scripts/start.sh
 
-# Or manually:
-PYTHONPATH=".:engine-repo" .venv/bin/uvicorn scheduling.app:app --port 8090
+# Skip the RAG Docker container (apartment search won't work)
+./scripts/start.sh --no-rag
 
-# With custom port:
-PORT=9000 ./scripts/run.sh
+# Skip the editor dev server
+./scripts/start.sh --no-editor
+
+# Just validate config without starting anything
+./scripts/start.sh --check
 ```
 
-Once running:
-- **Browser client**: http://localhost:8090
-- **Admin panel**: http://localhost:8090/admin
-- **Health check**: http://localhost:8090/health
-- **Twilio webhook**: Configure your Twilio number to POST to `https://<your-host>/twilio/voice`
+The script pauses between each component so you can see what's happening. Press Enter to continue, or Ctrl+C at any time to stop all services.
+
+### Manual startup
+
+If you prefer to start components individually:
+
+```bash
+# Backend only
+PYTHONPATH=".:engine-repo" .venv/bin/uvicorn scheduling.app:app --host 127.0.0.1 --port 8090 --reload
+
+# RAG service (Docker)
+docker compose up -d rag
+
+# Editor dev server
+cd web/editor && npx vite --port 5174
+```
+
+### Once running
+
+| URL | What |
+|-----|------|
+| http://localhost:8090 | Browser client — make a call from your browser |
+| http://localhost:8090/admin | Admin panel — voice selection, barge-in, runtime config |
+| http://localhost:8090/fsm | FSM viewer — session list, step inspector, debug stream |
+| http://localhost:8090/health | Health check — component status (RAG, STT, TTS, LLM) |
+| http://localhost:5174 | Visual workflow editor (dev only, if editor is running) |
+
+For Twilio phone calls, configure your Twilio number webhook to POST to `https://<your-host>/twilio/voice`.
 
 ### RAG Service (Apartment Search)
 
@@ -175,6 +211,41 @@ PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.ingest --data listings/d
 ```
 
 The import pipeline auto-detects CSV delimiters (comma, semicolon, tab) and uses a configurable column mapping (`listings/data/column_mappings/kaggle_shashanks1202.json`). To use a different CSV format, create a new mapping file and pass `--mapping-file`.
+
+## Security
+
+Admin and debug endpoints are protected by bearer token authentication. Set `ADMIN_API_KEY` in your `.env` to enable it:
+
+```bash
+# Generate a secure token
+python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+
+# Add to .env
+ADMIN_API_KEY=your-generated-token
+```
+
+**How it works:**
+
+| Scenario | Behavior |
+|----------|----------|
+| `ADMIN_API_KEY` set + valid token | Access granted |
+| `ADMIN_API_KEY` set + wrong/missing token | 401 Unauthorized |
+| `ADMIN_API_KEY` empty + `DEBUG=true` | Access granted (local dev convenience) |
+| `ADMIN_API_KEY` empty + `DEBUG=false` | 403 Forbidden (locked in production) |
+
+**Protected endpoints:** `POST /api/config`, `POST /api/tts/preview`, `PATCH /api/fsm/steps/{id}`, all session endpoints (`/api/fsm/sessions/*`), workflow mutation endpoints, and the WebSocket debug stream.
+
+**Public endpoints** (no auth required): `/health`, `GET /api/config`, `GET /api/fsm/steps`, `GET /api/workflow/{id}`, `GET /api/voices`, static HTML pages, Twilio/WebRTC call endpoints.
+
+The frontend (admin panel, FSM viewer, editor) prompts for the token on first use and stores it in `localStorage`.
+
+### Additional hardening
+
+- **Default bind address**: `127.0.0.1` (not `0.0.0.0`) — won't be internet-exposed unless you change it
+- **Session IDs**: 144-bit cryptographic tokens (`secrets.token_urlsafe`) instead of truncated UUIDs
+- **Input validation**: Workflow/state IDs are regex-validated to prevent path traversal
+- **State PATCH allowlist**: Only known safe fields can be modified via the API (prevents Pydantic internal injection)
+- **PII redaction**: Phone numbers and caller details are masked in log output; full utterances logged only at DEBUG level
 
 ## Admin Panel
 
@@ -261,9 +332,10 @@ voice-calendar-scheduler-FSM/
 ├── engine-repo/              # Git submodule — FSM engine
 ├── engine/                   # Symlink → engine-repo/engine/
 ├── scheduling/               # Domain application
-│   ├── app.py                # FastAPI: Twilio + WebRTC endpoints
+│   ├── app.py                # FastAPI: Twilio + WebRTC + admin endpoints
+│   ├── auth.py               # Bearer token auth (admin + WebSocket)
 │   ├── session.py            # Per-call FSM session driver
-│   ├── config.py             # Pydantic settings (.env)
+│   ├── config.py             # Pydantic settings (.env) + startup validation
 │   ├── channels/             # Audio normalization (Twilio, WebRTC)
 │   ├── workflows/            # FSM step definitions
 │   ├── tools/                # Search, calendar, booking tools
@@ -273,21 +345,26 @@ voice-calendar-scheduler-FSM/
 │   ├── server.py             # WebSocket signaling handler
 │   ├── webrtc.py             # Engine Session proxy (namespace fix)
 │   └── turn.py               # Twilio TURN credential fetch
-├── web/                      # Browser client (HTML + JS)
+├── web/                      # Browser client + admin + editor
+│   ├── admin.html            # Admin panel (voice, barge-in, config)
+│   ├── fsm.html              # FSM viewer (sessions, debug stream)
+│   └── editor/               # Visual workflow editor (Vite + React)
 ├── listings/                 # Apartment data + RAG ingestion
 │   ├── import_csv.py         # CSV → JSON import pipeline
 │   ├── ingest.py             # JSON → RAG service (single + batch)
 │   ├── schema.py             # ApartmentListing Pydantic model
 │   ├── sample_data/          # 10 hand-crafted listings (quick-start)
 │   └── data/                 # Kaggle-imported listings + column mappings
-├── tests/                    # 174 tests (unit + E2E voice harness)
-├── screenshots/              # Test run screenshots
+├── tests/                    # Unit + E2E voice harness + auth tests
 ├── scripts/
-│   ├── setup.sh              # Full project setup
-│   └── run.sh                # Start the server
+│   ├── setup.sh              # Full project setup (venv, deps, hooks)
+│   ├── start.sh              # Start everything (RAG + Backend + Editor)
+│   └── run.sh                # Start backend only
+├── services.conf             # External service paths (RAG repo location)
 ├── docker-compose.yml        # RAG service container
+├── requirements-lock.txt     # Pinned dependency versions
 ├── .env.example              # Configuration template
-└── requirements.txt          # Python dependencies
+└── CLAUDE.md                 # AI assistant project instructions
 ```
 
 ## Technical Notes

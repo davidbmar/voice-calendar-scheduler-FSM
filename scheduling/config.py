@@ -1,6 +1,12 @@
 """Application configuration via environment variables."""
 
+from __future__ import annotations
+
+import logging
+
 from pydantic_settings import BaseSettings
+
+log = logging.getLogger("scheduling.config")
 
 
 class Settings(BaseSettings):
@@ -22,8 +28,11 @@ class Settings(BaseSettings):
     # RAG
     rag_service_url: str = "http://localhost:8000"
 
+    # Admin auth
+    admin_api_key: str = ""
+
     # Server
-    host: str = "0.0.0.0"
+    host: str = "127.0.0.1"
     port: int = 8080
     debug: bool = False
 
@@ -31,6 +40,43 @@ class Settings(BaseSettings):
     ice_servers_json: str = '[{"urls":"stun:stun.l.google.com:19302"}]'
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    def validate_startup(self) -> list[str]:
+        """Validate configuration at startup. Returns warnings, raises on errors."""
+        warnings: list[str] = []
+        _placeholders = {"sk-ant-...", "AC...", "path/to/service-account.json"}
+
+        # LLM key — required
+        if self.llm_provider == "claude":
+            if not self.anthropic_api_key or self.anthropic_api_key in _placeholders:
+                raise ValueError(
+                    "ANTHROPIC_API_KEY is missing or still a placeholder. "
+                    "Set it in .env to use Claude."
+                )
+
+        # Admin API key — warn if unset
+        if not self.admin_api_key:
+            if self.debug:
+                warnings.append(
+                    "ADMIN_API_KEY not set. Admin APIs are open (DEBUG=true)."
+                )
+            else:
+                warnings.append(
+                    "ADMIN_API_KEY not set. Admin APIs are locked in production. "
+                    "Set ADMIN_API_KEY in .env to enable admin access."
+                )
+
+        # Twilio — warn if placeholder
+        if self.twilio_account_sid in _placeholders:
+            warnings.append("TWILIO_ACCOUNT_SID is a placeholder — Twilio calls won't work.")
+
+        # Google Calendar — warn if placeholder
+        if self.google_service_account_json in _placeholders:
+            warnings.append(
+                "GOOGLE_SERVICE_ACCOUNT_JSON is a placeholder — calendar integration disabled."
+            )
+
+        return warnings
 
 
 settings = Settings()

@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import logging
+import re
 import time
 from xml.etree.ElementTree import Element, SubElement, tostring
 
@@ -38,9 +39,11 @@ logging.basicConfig(
     format="%(asctime)s %(name)-20s %(levelname)-7s %(message)s",
 )
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+
+from scheduling.auth import require_admin_token, require_admin_ws
 
 from gateway.server import handle_signaling_ws
 from scheduling.channels.twilio_channel import TwilioMediaStreamChannel
@@ -58,6 +61,25 @@ log = logging.getLogger("scheduling.app")
 
 _START_TIME = time.time()
 
+_ID_PATTERN = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+# Fields that can be modified via PATCH on workflow states.
+# Rejects internal Pydantic fields like model_config, model_fields, etc.
+_STATE_PATCH_ALLOWLIST = {
+    "on_enter", "system_prompt", "narration", "tool_names", "transitions",
+    "state_fields", "tool_args_map", "auto_intent", "step_type", "handler",
+    "max_turns", "max_turns_target",
+}
+
+
+def _validate_id(value: str, label: str = "ID") -> None:
+    """Validate that an ID is safe (no path traversal, reasonable length)."""
+    if not _ID_PATTERN.match(value):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid {label}: must be 1-64 alphanumeric/dash/underscore characters.",
+        )
+
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
@@ -71,9 +93,43 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health() -> JSONResponse:
-        """Lightweight health check — confirms the event loop is responsive."""
+        """Health check with subsystem status."""
+        import httpx
+
         uptime = round(time.time() - _START_TIME, 1)
-        return JSONResponse({"status": "ok", "uptime": uptime})
+        components: dict[str, str] = {"app": "ok"}
+
+        # RAG service
+        try:
+            async with httpx.AsyncClient(timeout=2) as client:
+                resp = await client.get(f"{settings.rag_service_url}/health")
+                components["rag"] = "ok" if resp.status_code == 200 else "degraded"
+        except Exception:
+            components["rag"] = "unavailable"
+
+        # STT engine
+        try:
+            import engine.stt  # noqa: F401
+            components["stt"] = "ok"
+        except ImportError:
+            components["stt"] = "not_installed"
+
+        # TTS engine
+        try:
+            import engine.tts  # noqa: F401
+            components["tts"] = "ok"
+        except ImportError:
+            components["tts"] = "not_installed"
+
+        # LLM configured
+        components["llm"] = "ok" if settings.anthropic_api_key or settings.llm_provider == "ollama" else "not_configured"
+
+        overall = "ok" if all(v == "ok" for v in components.values()) else "degraded"
+        return JSONResponse({
+            "status": overall,
+            "uptime": uptime,
+            "components": components,
+        })
 
     # ── Twilio voice webhook ───────────────────────────────────
 
@@ -133,9 +189,10 @@ def create_app() -> FastAPI:
             await channel.initialize()
 
             caller_info = await channel.get_caller_info()
+            phone = caller_info.get("phone_number", "unknown")
             log.info(
                 "Call from %s (call_sid=%s)",
-                caller_info.get("phone_number", "unknown"),
+                phone[:3] + "***" + phone[-2:] if len(phone) > 5 else "***",
                 caller_info.get("call_sid", "unknown"),
             )
 
@@ -176,7 +233,7 @@ def create_app() -> FastAPI:
                     silence_frames = 0
 
                     if text and text.strip():
-                        log.info("Caller said: %s", text)
+                        log.debug("Caller said: %s", text)
                         response = await session.handle_utterance(text)
                         log.info(
                             "Response (step=%s): %s",
@@ -234,7 +291,7 @@ def create_app() -> FastAPI:
         from scheduling.config import runtime_settings
         return JSONResponse(runtime_settings)
 
-    @app.post("/api/config")
+    @app.post("/api/config", dependencies=[Depends(require_admin_token)])
     async def update_config(request: Request):
         from scheduling.config import runtime_settings
         body = await request.json()
@@ -244,7 +301,7 @@ def create_app() -> FastAPI:
         log.info("Config updated: %s", runtime_settings)
         return JSONResponse(runtime_settings)
 
-    @app.post("/api/tts/preview")
+    @app.post("/api/tts/preview", dependencies=[Depends(require_admin_token)])
     async def tts_preview(request: Request):
         """Synthesize text with a given voice and return WAV audio."""
         import asyncio
@@ -369,7 +426,7 @@ def create_app() -> FastAPI:
         }
         return JSONResponse({"steps": steps_data, "step_order": STEP_ORDER})
 
-    @app.patch("/api/fsm/steps/{step_id}")
+    @app.patch("/api/fsm/steps/{step_id}", dependencies=[Depends(require_admin_token)])
     async def update_fsm_step(step_id: str, request: Request):
         """Edit a step's system_prompt, narration, or tool_names at runtime."""
         from scheduling.workflows.apartment_viewing import STEPS
@@ -395,7 +452,7 @@ def create_app() -> FastAPI:
         import dataclasses
         return JSONResponse(dataclasses.asdict(step))
 
-    @app.get("/api/fsm/sessions")
+    @app.get("/api/fsm/sessions", dependencies=[Depends(require_admin_token)])
     async def list_fsm_sessions():
         """Return summary of all active scheduling sessions."""
         sessions = get_active_sessions()
@@ -404,7 +461,7 @@ def create_app() -> FastAPI:
             "count": len(sessions),
         })
 
-    @app.get("/api/fsm/sessions/{session_id}")
+    @app.get("/api/fsm/sessions/{session_id}", dependencies=[Depends(require_admin_token)])
     async def get_fsm_session(session_id: str):
         """Return detailed state of a single session."""
         session = get_session(session_id)
@@ -414,7 +471,7 @@ def create_app() -> FastAPI:
 
     # ── Test endpoint: create a demo session for UI testing ──────
 
-    @app.post("/api/fsm/sessions/demo")
+    @app.post("/api/fsm/sessions/demo", dependencies=[Depends(require_admin_token)])
     async def create_demo_session():
         """Create a fake session for testing the debug UI."""
         import asyncio
@@ -502,8 +559,18 @@ def create_app() -> FastAPI:
     # ── Debug stream WebSocket ──────────────────────────────────
 
     @app.websocket("/api/fsm/sessions/{session_id}/debug")
-    async def debug_stream(websocket: WebSocket, session_id: str) -> None:
+    async def debug_stream(websocket: WebSocket, session_id: str, token: str = "") -> None:
         """WebSocket endpoint that streams real-time debug events."""
+        # Auth check before accepting — browsers can't send headers on WS
+        key = settings.admin_api_key
+        if key:
+            if token != key:
+                await websocket.close(code=4001, reason="Unauthorized")
+                return
+        elif not settings.debug:
+            await websocket.close(code=4003, reason="Admin API key not configured")
+            return
+
         session = get_session(session_id)
         if not session:
             await websocket.close(code=4004, reason="Session not found")
@@ -525,7 +592,7 @@ def create_app() -> FastAPI:
         finally:
             broadcaster.unsubscribe(queue)
 
-    @app.post("/api/fsm/sessions/{session_id}/pause")
+    @app.post("/api/fsm/sessions/{session_id}/pause", dependencies=[Depends(require_admin_token)])
     async def pause_session(session_id: str):
         """Pause FSM processing for a session."""
         session = get_session(session_id)
@@ -534,7 +601,7 @@ def create_app() -> FastAPI:
         session.pause()
         return JSONResponse({"paused": True})
 
-    @app.post("/api/fsm/sessions/{session_id}/resume")
+    @app.post("/api/fsm/sessions/{session_id}/resume", dependencies=[Depends(require_admin_token)])
     async def resume_session(session_id: str):
         """Resume FSM processing for a session."""
         session = get_session(session_id)
@@ -543,7 +610,7 @@ def create_app() -> FastAPI:
         session.resume()
         return JSONResponse({"paused": False})
 
-    @app.get("/api/fsm/sessions/{session_id}/debug-context")
+    @app.get("/api/fsm/sessions/{session_id}/debug-context", dependencies=[Depends(require_admin_token)])
     async def get_debug_context(session_id: str):
         """Return full debug snapshot for Claude context."""
         session = get_session(session_id)
@@ -568,14 +635,17 @@ def create_app() -> FastAPI:
     @app.get("/api/workflow/{workflow_id}")
     async def get_workflow(workflow_id: str):
         """Return full workflow definition as JSON."""
+        _validate_id(workflow_id, "workflow_id")
         wf = _workflows.get(workflow_id)
         if not wf:
             return JSONResponse({"error": "Workflow not found"}, status_code=404)
         return JSONResponse(wf.model_dump())
 
-    @app.patch("/api/workflow/{workflow_id}/states/{state_id}")
+    @app.patch("/api/workflow/{workflow_id}/states/{state_id}", dependencies=[Depends(require_admin_token)])
     async def update_workflow_state(workflow_id: str, state_id: str, request: Request):
         """Edit any state field at runtime."""
+        _validate_id(workflow_id, "workflow_id")
+        _validate_id(state_id, "state_id")
         wf = _workflows.get(workflow_id)
         if not wf:
             return JSONResponse({"error": "Workflow not found"}, status_code=404)
@@ -586,19 +656,23 @@ def create_app() -> FastAPI:
         body = await request.json()
         updated = []
         for key, value in body.items():
-            if hasattr(state, key) and key != "id":
+            if key in _STATE_PATCH_ALLOWLIST:
                 setattr(state, key, value)
                 updated.append(key)
 
         if not updated:
-            return JSONResponse({"error": "No valid fields updated"}, status_code=400)
+            return JSONResponse(
+                {"error": "No valid fields. Allowed: " + ", ".join(sorted(_STATE_PATCH_ALLOWLIST))},
+                status_code=400,
+            )
 
         log.info("Workflow %s state %s updated: %s", workflow_id, state_id, updated)
         return JSONResponse(state.model_dump())
 
-    @app.put("/api/workflow/{workflow_id}")
+    @app.put("/api/workflow/{workflow_id}", dependencies=[Depends(require_admin_token)])
     async def save_workflow(workflow_id: str, request: Request):
         """Save complete workflow (from editor) and persist to JSONL."""
+        _validate_id(workflow_id, "workflow_id")
         body = await request.json()
 
         try:

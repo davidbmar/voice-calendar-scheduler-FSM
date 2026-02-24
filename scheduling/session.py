@@ -16,8 +16,8 @@ import asyncio
 import json
 import logging
 import re
+import secrets
 import time
-import uuid
 from typing import Any, Optional
 
 from engine.orchestrator import Orchestrator, OrchestratorConfig
@@ -43,6 +43,14 @@ from scheduling.workflows.apartment_viewing import (  # noqa: F401
 
 log = logging.getLogger("scheduling.session")
 
+
+def redact_pii(value: str) -> str:
+    """Mask PII for logging — show first 3 and last 2 chars only."""
+    if not value or len(value) <= 5:
+        return "***"
+    return value[:3] + "***" + value[-2:]
+
+
 # ── Session registry ─────────────────────────────────────────────
 
 _active_sessions: dict[str, "SchedulingSession"] = {}
@@ -50,7 +58,7 @@ _active_sessions: dict[str, "SchedulingSession"] = {}
 
 def register_session(session: "SchedulingSession") -> str:
     """Register a session and return its unique ID."""
-    session_id = uuid.uuid4().hex[:12]
+    session_id = secrets.token_urlsafe(18)
     session._session_id = session_id
     session._started_at = time.time()
     _active_sessions[session_id] = session
@@ -210,7 +218,7 @@ class SchedulingSession:
         log.info(
             "Session started: step=%s phone=%s",
             self._current_step_id,
-            self._state.phone_number,
+            redact_pii(self._state.phone_number),
         )
 
     async def get_greeting(self) -> str:
@@ -599,7 +607,8 @@ class SchedulingSession:
             self._done = True
 
         self._emit_event("step_complete", {"extracted_data": data})
-        log.info("Step %s completed, state: %s", state_id, self._state)
+        log.info("Step %s completed", state_id)
+        log.debug("Step %s caller state: %s", state_id, self._state)
 
     # ── Internal: Tool argument builders ──────────────────────
 

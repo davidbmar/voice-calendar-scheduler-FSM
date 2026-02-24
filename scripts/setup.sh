@@ -15,10 +15,14 @@ cd "$PROJECT_ROOT"
 
 VENV_DIR="$PROJECT_ROOT/.venv"
 QUICK=false
+UPDATE_DEPS=false
 
-if [ "$1" = "--quick" ]; then
-    QUICK=true
-fi
+for arg in "$@"; do
+    case "$arg" in
+        --quick) QUICK=true ;;
+        --update-deps) UPDATE_DEPS=true ;;
+    esac
+done
 
 # ── Colors ────────────────────────────────────────────────────
 GREEN='\033[0;32m'
@@ -92,6 +96,14 @@ PY="$VENV_DIR/bin/python"
 # ── Step 4: Install dependencies ─────────────────────────────
 echo ""
 echo "── Dependencies ──"
+
+# Use lock file if available and --update-deps not specified
+LOCK_FILE="$PROJECT_ROOT/requirements-lock.txt"
+if [ -f "$LOCK_FILE" ] && [ "$UPDATE_DEPS" = false ]; then
+    echo "  Installing from lock file (use --update-deps to re-resolve)..."
+    "$PIP" install -q -r "$LOCK_FILE" 2>/dev/null && ok "Installed from requirements-lock.txt" \
+        || warn "Lock file install had issues — falling back to range install"
+fi
 
 # Core packages (always needed)
 echo "  Installing core packages..."

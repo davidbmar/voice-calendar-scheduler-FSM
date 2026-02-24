@@ -3,7 +3,7 @@ version: "3.8"
 services:
   rag:
     build:
-      context: ../2026-feb-voice-optimal-RAG
+      context: ${RAG_BUILD_CONTEXT:-../2026-feb-voice-optimal-RAG}
       dockerfile: Dockerfile
     # If using a pre-built image from voice-optimal-RAG:
     # image: voice-optimal-rag:latest

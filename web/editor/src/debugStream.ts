@@ -34,7 +34,9 @@ export function connectDebugStream(
 
   function connect(): void {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${proto}//${location.host}/api/fsm/sessions/${sessionId}/debug`;
+    const token = localStorage.getItem('admin_api_key') || '';
+    const tokenParam = token ? `?token=${encodeURIComponent(token)}` : '';
+    const url = `${proto}//${location.host}/api/fsm/sessions/${sessionId}/debug${tokenParam}`;
     ws = new WebSocket(url);
 
     ws.onopen = () => {

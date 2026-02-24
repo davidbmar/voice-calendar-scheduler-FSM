@@ -22,7 +22,7 @@ if command -v docker &>/dev/null && [ -f docker-compose.yml ]; then
 fi
 
 PORT="${PORT:-8090}"
-HOST="${HOST:-0.0.0.0}"
+HOST="${HOST:-127.0.0.1}"
 
 echo "Starting server on http://$HOST:$PORT"
 echo "  Browser client: http://localhost:$PORT"

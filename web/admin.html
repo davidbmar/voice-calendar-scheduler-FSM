@@ -610,6 +610,24 @@
         var voices = { kokoro: [], piper: [] };
         var activeEngine = 'kokoro';
 
+        // ── Admin auth ────────────────────────────────
+        function getAdminToken() {
+            var token = localStorage.getItem('admin_api_key');
+            if (!token) {
+                token = prompt('Enter admin API key:');
+                if (token) localStorage.setItem('admin_api_key', token);
+            }
+            return token || '';
+        }
+
+        function adminFetch(url, opts) {
+            opts = opts || {};
+            opts.headers = opts.headers || {};
+            var token = getAdminToken();
+            if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+            return fetch(url, opts);
+        }
+
         var KOKORO_GROUPS = {
             'af_': { label: 'US English \u2014 Female', flag: '\u{1F1FA}\u{1F1F8}' },
             'am_': { label: 'US English \u2014 Male',   flag: '\u{1F1FA}\u{1F1F8}' },
@@ -659,7 +677,7 @@
         }
 
         function updateConfig(patch) {
-            fetch('/api/config', {
+            adminFetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(patch)
@@ -834,7 +852,7 @@
                 previewAudioUrl = null;
             }
 
-            fetch('/api/tts/preview', {
+            adminFetch('/api/tts/preview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text: text, voice: voice, engine: engine })

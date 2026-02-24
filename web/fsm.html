@@ -608,6 +608,24 @@
         var lastFetchedPrompt = '';
         var lastFetchedNarration = '';
 
+        // ── Admin auth ────────────────────────────────
+        function getAdminToken() {
+            var token = localStorage.getItem('admin_api_key');
+            if (!token) {
+                token = prompt('Enter admin API key:');
+                if (token) localStorage.setItem('admin_api_key', token);
+            }
+            return token || '';
+        }
+
+        function adminFetch(url, opts) {
+            opts = opts || {};
+            opts.headers = opts.headers || {};
+            var token = getAdminToken();
+            if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+            return fetch(url, opts);
+        }
+
         // ── Helpers ────────────────────────────────────
 
         function showToast(msg, type) {
@@ -793,7 +811,7 @@
                 return;
             }
 
-            fetch('/api/fsm/steps/' + selectedStepId, {
+            adminFetch('/api/fsm/steps/' + selectedStepId, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
@@ -823,7 +841,7 @@
         // ── Sessions polling ──────────────────────────
 
         function loadSessions() {
-            fetch('/api/fsm/sessions')
+            adminFetch('/api/fsm/sessions')
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     renderSessions(data.sessions, data.count);

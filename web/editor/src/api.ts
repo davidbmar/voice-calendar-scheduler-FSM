@@ -6,6 +6,22 @@ import type { WorkflowDef } from './workflow.js';
 
 const BASE = '';  // Same origin — Vite proxy handles /api in dev
 
+function getAdminToken(): string {
+  let token = localStorage.getItem('admin_api_key');
+  if (!token) {
+    token = prompt('Enter admin API key:');
+    if (token) localStorage.setItem('admin_api_key', token);
+  }
+  return token || '';
+}
+
+function adminHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  const token = getAdminToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
 export async function fetchWorkflow(workflowId: string): Promise<WorkflowDef> {
   const resp = await fetch(`${BASE}/api/workflow/${workflowId}`);
   if (!resp.ok) throw new Error(`Failed to fetch workflow: ${resp.status}`);
@@ -15,7 +31,7 @@ export async function fetchWorkflow(workflowId: string): Promise<WorkflowDef> {
 export async function saveWorkflow(workflowId: string, def: WorkflowDef): Promise<WorkflowDef> {
   const resp = await fetch(`${BASE}/api/workflow/${workflowId}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(def),
   });
   if (!resp.ok) throw new Error(`Failed to save workflow: ${resp.status}`);
@@ -29,7 +45,7 @@ export async function patchWorkflowState(
 ): Promise<unknown> {
   const resp = await fetch(`${BASE}/api/workflow/${workflowId}/states/${stateId}`, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: adminHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(updates),
   });
   if (!resp.ok) throw new Error(`Failed to patch state: ${resp.status}`);
@@ -45,18 +61,18 @@ export interface SessionSummary {
 }
 
 export async function fetchSessions(): Promise<{ sessions: SessionSummary[]; count: number }> {
-  const resp = await fetch(`${BASE}/api/fsm/sessions`);
+  const resp = await fetch(`${BASE}/api/fsm/sessions`, { headers: adminHeaders() });
   if (!resp.ok) throw new Error(`Failed to fetch sessions: ${resp.status}`);
   return resp.json();
 }
 
 export async function pauseSession(sessionId: string): Promise<void> {
-  const resp = await fetch(`${BASE}/api/fsm/sessions/${sessionId}/pause`, { method: 'POST' });
+  const resp = await fetch(`${BASE}/api/fsm/sessions/${sessionId}/pause`, { method: 'POST', headers: adminHeaders() });
   if (!resp.ok) throw new Error(`Failed to pause session: ${resp.status}`);
 }
 
 export async function resumeSession(sessionId: string): Promise<void> {
-  const resp = await fetch(`${BASE}/api/fsm/sessions/${sessionId}/resume`, { method: 'POST' });
+  const resp = await fetch(`${BASE}/api/fsm/sessions/${sessionId}/resume`, { method: 'POST', headers: adminHeaders() });
   if (!resp.ok) throw new Error(`Failed to resume session: ${resp.status}`);
 }
 
@@ -80,7 +96,7 @@ export interface DebugContext {
 }
 
 export async function fetchDebugContext(sessionId: string): Promise<DebugContext> {
-  const resp = await fetch(`${BASE}/api/fsm/sessions/${sessionId}/debug-context`);
+  const resp = await fetch(`${BASE}/api/fsm/sessions/${sessionId}/debug-context`, { headers: adminHeaders() });
   if (!resp.ok) throw new Error(`Failed to fetch debug context: ${resp.status}`);
   return resp.json();
 }
