@@ -212,6 +212,55 @@ PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.ingest --data listings/d
 
 The import pipeline auto-detects CSV delimiters (comma, semicolon, tab) and uses a configurable column mapping (`listings/data/column_mappings/kaggle_shashanks1202.json`). To use a different CSV format, create a new mapping file and pass `--mapping-file`.
 
+### Google Calendar (Appointment Booking)
+
+The calendar integration lets the system check real availability and book viewing appointments on your behalf. It uses a **Google Service Account** — a bot identity that doesn't require user login. Without it, the app still works but the booking steps are disabled.
+
+#### Step 1: Create a Google Cloud project
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project (or select an existing one)
+3. Enable the **Google Calendar API**:
+   - Navigate to **APIs & Services → Library**
+   - Search for "Google Calendar API" and click **Enable**
+
+#### Step 2: Create a service account
+
+1. Go to **APIs & Services → Credentials**
+2. Click **Create Credentials → Service Account**
+3. Give it a name (e.g., `calendar-scheduler`) and click **Done**
+4. Click into the new service account, go to the **Keys** tab
+5. Click **Add Key → Create new key → JSON**
+6. Save the downloaded JSON file somewhere safe (e.g., `~/.config/calendar-service-account.json`)
+
+#### Step 3: Share your calendar with the service account
+
+The service account has its own identity (an email like `calendar-scheduler@your-project.iam.gserviceaccount.com`). It can't see your calendar until you share it:
+
+1. Open [Google Calendar](https://calendar.google.com/)
+2. Find the calendar you want to use in the left sidebar
+3. Click the three dots → **Settings and sharing**
+4. Under **Share with specific people**, click **Add people**
+5. Paste the service account email (from the JSON file's `client_email` field)
+6. Set permission to **Make changes to events**
+7. Click **Send**
+
+#### Step 4: Configure `.env`
+
+```bash
+# Path to the JSON key file you downloaded in Step 2
+GOOGLE_SERVICE_ACCOUNT_JSON=/path/to/calendar-service-account.json
+
+# Calendar ID — use "primary" for the service account's own calendar,
+# or the specific calendar ID from Google Calendar settings
+# (looks like: abc123@group.calendar.google.com)
+GOOGLE_CALENDAR_ID=primary
+```
+
+The app uses the `https://www.googleapis.com/auth/calendar` scope for full read/write access (checking availability via freeBusy, creating events with attendee invitations, and cancelling bookings).
+
+**If not configured**, the startup script shows a warning and the app runs without calendar tools — the FSM conversation still works but skips the availability-check and booking steps.
+
 ## Security
 
 Admin and debug endpoints are protected by bearer token authentication. Set `ADMIN_API_KEY` in your `.env` to enable it:
