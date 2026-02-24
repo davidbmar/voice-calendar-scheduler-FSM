@@ -15,49 +15,65 @@
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: #1a1a2e;
             color: #e0e0e0;
-            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 320px 4px 1fr;
+        }
+
+        /* ── Call pane (left) ── */
+
+        .call-pane {
             display: flex;
             flex-direction: column;
+            padding: 1.5rem;
+            overflow: hidden;
+        }
+
+        .call-header {
+            display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
         }
 
-        .container {
-            text-align: center;
-            padding: 2rem;
-            max-width: 480px;
-            width: 100%;
-        }
-
-        h1 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
+        .call-header h1 {
+            font-size: 1.1rem;
             color: #f0f0f0;
         }
 
-        .subtitle {
-            font-size: 0.875rem;
-            color: #888;
-            margin-bottom: 2rem;
+        .admin-link {
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 0.7rem;
+            color: #7a7a9a;
+            text-decoration: none;
+            padding: 0.3rem 0.6rem;
+            border: 1px solid #2a2a4a;
+            border-radius: 5px;
+            transition: all 0.2s;
+        }
+
+        .admin-link:hover {
+            color: #e0e0e0;
+            border-color: #4a6fa5;
         }
 
         #status {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             color: #aaa;
-            margin-bottom: 1.5rem;
+            text-align: center;
+            margin-bottom: 1.25rem;
             min-height: 1.5em;
         }
 
-        #status.connected {
-            color: #4caf50;
-        }
+        #status.connected { color: #4caf50; }
+        #status.error { color: #f44336; }
+        #status.calling { color: #ff9800; }
 
-        #status.error {
-            color: #f44336;
-        }
-
-        #status.calling {
-            color: #ff9800;
+        .call-btn-wrap {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 1.5rem;
         }
 
         #call-btn {
@@ -74,102 +90,133 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 2rem;
         }
 
-        #call-btn:hover {
-            background: #43a047;
-            transform: scale(1.05);
+        #call-btn:hover { background: #43a047; transform: scale(1.05); }
+        #call-btn:active { transform: scale(0.95); }
+        #call-btn.hangup { background: #f44336; }
+        #call-btn.hangup:hover { background: #e53935; }
+        #call-btn:disabled { background: #555; cursor: not-allowed; transform: none; }
+
+        .log-label {
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 0.65rem;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 0.4rem;
         }
 
-        #call-btn:active {
-            transform: scale(0.95);
-        }
-
-        #call-btn.hangup {
-            background: #f44336;
-        }
-
-        #call-btn.hangup:hover {
-            background: #e53935;
-        }
-
-        #call-btn:disabled {
-            background: #555;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .log {
+        #log {
+            flex: 1;
+            min-height: 0;
             text-align: left;
             background: #16213e;
             border-radius: 8px;
-            padding: 1rem;
-            max-height: 200px;
+            padding: 0.75rem;
             overflow-y: auto;
             font-family: "SF Mono", Monaco, monospace;
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             line-height: 1.6;
             color: #888;
         }
 
-        .log .entry {
-            padding: 2px 0;
-            border-bottom: 1px solid #1a1a3e;
+        #log .entry { padding: 2px 0; border-bottom: 1px solid #1a1a3e; }
+        #log .entry:last-child { border-bottom: none; }
+        #log .entry.info { color: #64b5f6; }
+        #log .entry.error { color: #ef5350; }
+
+        /* ── Resize handle ── */
+
+        .resize-handle {
+            cursor: col-resize;
+            background: #121220;
+            transition: background 0.15s;
         }
 
-        .log .entry:last-child {
-            border-bottom: none;
-        }
+        .resize-handle:hover { background: #00e5cc40; }
+        .resize-handle.dragging { background: #00e5cc60; }
 
-        .log .entry.info {
-            color: #64b5f6;
-        }
+        /* ── Editor iframe (right) ── */
 
-        .log .entry.error {
-            color: #ef5350;
-        }
-
-        .nav-links {
+        .editor-pane {
+            overflow: hidden;
             display: flex;
-            justify-content: center;
-            gap: 1.5rem;
-            margin-top: 1.5rem;
         }
 
-        .nav-links a {
-            font-family: "SF Mono", Monaco, monospace;
-            font-size: 0.72rem;
-            color: #7a7a9a;
-            text-decoration: none;
-            padding: 0.4rem 0.8rem;
-            border: 1px solid #2a2a4a;
-            border-radius: 5px;
-            transition: all 0.2s;
+        .editor-pane iframe {
+            border: none;
+            flex: 1 1 0;
+            width: 100%;
+            min-height: 0;
         }
-        .nav-links a:hover {
-            color: #e0e0e0;
-            border-color: #4a6fa5;
+
+        /* ── Mobile: call pane only ── */
+
+        @media (max-width: 768px) {
+            body {
+                grid-template-columns: 1fr;
+            }
+            .resize-handle,
+            .editor-pane {
+                display: none;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Voice Calendar Scheduler</h1>
-        <p class="subtitle">Browser WebRTC Client</p>
+    <!-- Left pane: call controls -->
+    <div class="call-pane">
+        <div class="call-header">
+            <h1>Voice Scheduler</h1>
+            <a href="/admin" target="_blank" class="admin-link">Admin</a>
+        </div>
 
         <div id="status">Disconnected</div>
 
-        <button id="call-btn" disabled>Call</button>
-
-        <div id="log" class="log"></div>
-
-        <div class="nav-links">
-            <a href="/editor">Workflow Editor</a>
-            <a href="/admin">Admin</a>
+        <div class="call-btn-wrap">
+            <button id="call-btn" disabled>Call</button>
         </div>
+
+        <div class="log-label">Events</div>
+        <div id="log"></div>
+    </div>
+
+    <!-- Draggable divider -->
+    <div class="resize-handle" id="resize-handle"></div>
+
+    <!-- Right pane: workflow editor -->
+    <div class="editor-pane">
+        <iframe id="editor-frame" src="/editor"></iframe>
     </div>
 
     <script src="/static/app.js"></script>
+    <script>
+        (function() {
+            const handle = document.getElementById('resize-handle');
+            const iframe = document.getElementById('editor-frame');
+            let dragging = false;
+
+            handle.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                dragging = true;
+                handle.classList.add('dragging');
+                iframe.style.pointerEvents = 'none';
+            });
+
+            document.addEventListener('mousemove', function(e) {
+                if (!dragging) return;
+                let w = Math.min(600, Math.max(240, e.clientX));
+                document.body.style.gridTemplateColumns = w + 'px 4px 1fr';
+            });
+
+            document.addEventListener('mouseup', function() {
+                if (!dragging) return;
+                dragging = false;
+                handle.classList.remove('dragging');
+                iframe.style.pointerEvents = '';
+            });
+        })();
+    </script>
 </body>
 </html>

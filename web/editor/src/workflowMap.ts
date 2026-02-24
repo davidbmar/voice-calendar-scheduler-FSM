@@ -8,6 +8,10 @@ import type { AppState, AppCallbacks, ArrowContext } from './appContext.js';
 import { escHtml, truncate, isSelfLoopTransition } from './domUtils.js';
 import { attachZoomPan, type ZoomPanController } from './zoomPan.js';
 import { connectDebugStream, type DebugEvent, type DebugStreamController } from './debugStream.js';
+import { saveCheckpoint, loadSession, purgeExpired } from './extractedDataStore.js';
+
+// Purge expired checkpoint data on module load
+purgeExpired().catch(() => {});
 
 export function renderWorkflowMap(
   def: WorkflowDef,
@@ -549,7 +553,7 @@ export function openFullscreenMap(
     let activeStateId = '';
 
     // Data checkpoint panel — accumulates extracted fields across all states
-    const checkpointPanel = createDataCheckpointPanel();
+    const checkpointPanel = createDataCheckpointPanel(sessionId);
     viewport.appendChild(checkpointPanel.element);
 
     // Helper: highlight a node as the active state and zoom to it
@@ -785,7 +789,7 @@ interface DataCheckpointHandle {
   addData(stateId: string, data: Record<string, unknown>): void;
 }
 
-function createDataCheckpointPanel(): DataCheckpointHandle {
+function createDataCheckpointPanel(sessionId?: string): DataCheckpointHandle {
   const panel = document.createElement('div');
   panel.className = 'data-checkpoint-panel';
 
@@ -806,14 +810,35 @@ function createDataCheckpointPanel(): DataCheckpointHandle {
   // Track groups by state so we append new fields to existing groups
   const groups = new Map<string, HTMLElement>();
 
-  function addData(stateId: string, data: Record<string, unknown>): void {
-    // Remove empty placeholder
-    const emptyEl = body.querySelector('.data-checkpoint-empty');
-    if (emptyEl) emptyEl.remove();
+  function renderRow(group: HTMLElement, key: string, value: unknown): void {
+    // Remove existing row for this key if re-extracted
+    const existing = group.querySelector(`[data-key="${key}"]`);
+    if (existing) existing.remove();
 
-    // Get or create group for this state
+    const row = document.createElement('div');
+    row.className = 'data-checkpoint-row';
+    row.dataset.key = key;
+
+    const keyEl = document.createElement('span');
+    keyEl.className = 'data-checkpoint-key';
+    keyEl.textContent = key;
+
+    const valEl = document.createElement('span');
+    valEl.className = 'data-checkpoint-value';
+    valEl.textContent = String(value);
+
+    row.appendChild(keyEl);
+    row.appendChild(valEl);
+    group.appendChild(row);
+  }
+
+  function getOrCreateGroup(stateId: string): HTMLElement {
     let group = groups.get(stateId);
     if (!group) {
+      // Remove empty placeholder
+      const emptyEl = body.querySelector('.data-checkpoint-empty');
+      if (emptyEl) emptyEl.remove();
+
       group = document.createElement('div');
       group.className = 'data-checkpoint-group';
       const stateLabel = document.createElement('div');
@@ -823,34 +848,36 @@ function createDataCheckpointPanel(): DataCheckpointHandle {
       body.appendChild(group);
       groups.set(stateId, group);
     }
+    return group;
+  }
 
-    // Add each key-value pair (skip intent and done flags)
+  function addData(stateId: string, data: Record<string, unknown>): void {
+    const group = getOrCreateGroup(stateId);
+
     for (const [key, value] of Object.entries(data)) {
       if (key === 'intent' || key === 'done') continue;
       if (value === null || value === undefined) continue;
-
-      // Remove existing row for this key if re-extracted
-      const existing = group.querySelector(`[data-key="${key}"]`);
-      if (existing) existing.remove();
-
-      const row = document.createElement('div');
-      row.className = 'data-checkpoint-row';
-      row.dataset.key = key;
-
-      const keyEl = document.createElement('span');
-      keyEl.className = 'data-checkpoint-key';
-      keyEl.textContent = key;
-
-      const valEl = document.createElement('span');
-      valEl.className = 'data-checkpoint-value';
-      valEl.textContent = String(value);
-
-      row.appendChild(keyEl);
-      row.appendChild(valEl);
-      group.appendChild(row);
+      renderRow(group, key, value);
     }
 
     body.scrollTop = body.scrollHeight;
+
+    // Persist to IndexedDB
+    if (sessionId) {
+      saveCheckpoint(sessionId, stateId, data).catch(() => {});
+    }
+  }
+
+  // Restore previously persisted data for this session
+  if (sessionId) {
+    loadSession(sessionId).then((stored) => {
+      for (const [stateId, fields] of stored) {
+        const group = getOrCreateGroup(stateId);
+        for (const [key, value] of Object.entries(fields)) {
+          renderRow(group, key, value);
+        }
+      }
+    }).catch(() => {});
   }
 
   return { element: panel, addData };
