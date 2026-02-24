@@ -114,14 +114,67 @@ Once running:
 - **Health check**: http://localhost:8090/health
 - **Twilio webhook**: Configure your Twilio number to POST to `https://<your-host>/twilio/voice`
 
-### RAG Service (optional)
+### RAG Service (Apartment Search)
 
-To enable apartment search, start the RAG service and ingest sample data:
+The RAG service powers the apartment search tool. It runs as a Docker container with LanceDB + nomic-embed for semantic search. **Data persists across restarts** via a Docker volume — you only need to ingest once.
+
+#### First-time setup
+
+```bash
+# 1. Start the RAG service (first boot takes ~30s to load the embedding model)
+docker compose up -d rag
+
+# 2. Wait for it to be healthy
+curl -sf http://localhost:8000/health
+# → {"status":"healthy","documents":0,...}
+
+# 3. Ingest apartment listings (choose one)
+
+# Option A: Sample data (10 hand-crafted Austin listings, instant)
+PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.ingest
+
+# Option B: Kaggle data (535 real Austin TX listings, ~30s)
+PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.ingest --data listings/data/austin_apartments.json
+
+# 4. Verify search works
+curl -s -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "2 bedroom pet friendly", "top_k": 3}' | python3 -m json.tool
+```
+
+#### After a restart
+
+Data persists in the Docker volume, so just start the container:
 
 ```bash
 docker compose up -d rag
-PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.ingest
+# Wait ~30s for model load, then it's ready with all previously ingested data
+curl -sf http://localhost:8000/health
+# → {"status":"healthy","documents":535,...}
 ```
+
+You do **not** need to re-ingest. The only time you need to ingest again is if you:
+- Remove the Docker volume (`docker volume rm voice-calendar-scheduler-fsm_rag-data`)
+- Want to add new/different listings
+
+#### Importing your own CSV data (optional)
+
+To import from a different apartment CSV (e.g., a fresh Kaggle download):
+
+```bash
+# Download from https://www.kaggle.com/datasets/shashanks1202/apartment-rent-data
+
+# Import and filter to Austin TX
+PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.import_csv \
+    /path/to/apartments_for_rent_classified_100K.csv \
+    --city Austin --state TX \
+    --output listings/data/austin_apartments.json
+
+# Then ingest into RAG
+PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.ingest --data listings/data/austin_apartments.json
+```
+
+The import pipeline auto-detects CSV delimiters (comma, semicolon, tab) and uses a configurable column mapping (`listings/data/column_mappings/kaggle_shashanks1202.json`). To use a different CSV format, create a new mapping file and pass `--mapping-file`.
 
 ## Admin Panel
 
@@ -222,6 +275,11 @@ voice-calendar-scheduler-FSM/
 │   └── turn.py               # Twilio TURN credential fetch
 ├── web/                      # Browser client (HTML + JS)
 ├── listings/                 # Apartment data + RAG ingestion
+│   ├── import_csv.py         # CSV → JSON import pipeline
+│   ├── ingest.py             # JSON → RAG service (single + batch)
+│   ├── schema.py             # ApartmentListing Pydantic model
+│   ├── sample_data/          # 10 hand-crafted listings (quick-start)
+│   └── data/                 # Kaggle-imported listings + column mappings
 ├── tests/                    # 174 tests (unit + E2E voice harness)
 ├── screenshots/              # Test run screenshots
 ├── scripts/
