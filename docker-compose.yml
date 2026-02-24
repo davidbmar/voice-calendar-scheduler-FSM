@@ -3,22 +3,22 @@ version: "3.8"
 services:
   rag:
     build:
-      context: .
-      dockerfile: rag/Dockerfile
+      context: ../2026-feb-voice-optimal-RAG
+      dockerfile: Dockerfile
     # If using a pre-built image from voice-optimal-RAG:
     # image: voice-optimal-rag:latest
     ports:
-      - "8000:8000"
+      - "8000:8100"
     volumes:
-      - rag-data:/app/data
+      - rag-data:/data
     environment:
-      - HOST=0.0.0.0
-      - PORT=8000
+      - EMBEDDING_MODEL=nomic-ai/nomic-embed-text-v1.5
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 5
+      start_period: 30s
 
 volumes:
   rag-data:

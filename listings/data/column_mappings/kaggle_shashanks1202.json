@@ -1,0 +1,24 @@
+{
+  "description": "Column mapping for Kaggle 'Apartment Rent Data' by shashanks1202",
+  "source_url": "https://www.kaggle.com/datasets/shashanks1202/apartment-rent-data",
+  "columns": {
+    "id": "id",
+    "address": "address",
+    "city": "cityname",
+    "state": "state",
+    "bedrooms": "bedrooms",
+    "bathrooms": "bathrooms",
+    "sqft": "square_feet",
+    "rent": "price",
+    "description": "body",
+    "amenities": "amenities",
+    "pet_friendly": "pets_allowed"
+  },
+  "transforms": {
+    "bedrooms": "int_from_float",
+    "sqft": "int_from_float",
+    "rent": "int_from_float",
+    "amenities": "parse_list",
+    "pet_friendly": "parse_bool_pet"
+  }
+}
