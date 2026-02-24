@@ -25,6 +25,17 @@
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
+        /* ── Dark scrollbars ─────────────────────────── */
+        * {
+            scrollbar-color: #2a2a4a #0f0f1e;
+            scrollbar-width: thin;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-deep); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+        ::-webkit-scrollbar-corner { background: var(--bg-deep); }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: var(--bg-deep);
@@ -276,6 +287,23 @@
             border-radius: 3px;
             background: rgba(76, 175, 80, 0.15);
             color: var(--accent);
+        }
+
+        .session-latest-tag {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.55rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            padding: 0.12rem 0.4rem;
+            border-radius: 3px;
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .session-time {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.68rem;
+            color: var(--text-muted);
         }
 
         .session-field {
@@ -818,25 +846,45 @@
                 return;
             }
 
+            // Sort sessions by start time, latest first
+            sessions.sort(function(a, b) {
+                return (b.started_at || 0) - (a.started_at || 0);
+            });
+
             var grid = createEl('div', { className: 'sessions-grid' });
 
-            sessions.forEach(function(s) {
+            sessions.forEach(function(s, idx) {
                 var card = createEl('div', { className: 'session-card' });
 
-                // Header
+                // Header row: session ID + badges
                 var header = createEl('div', { className: 'session-card-header' });
                 var idEl = createEl('span', { className: 'session-id' }, s.session_id);
+                var badgeWrap = document.createElement('span');
+                if (idx === 0) {
+                    var latestTag = createEl('span', { className: 'session-latest-tag' }, 'LATEST');
+                    badgeWrap.appendChild(latestTag);
+                    badgeWrap.appendChild(document.createTextNode(' '));
+                }
                 var stepBadge = createEl('span', { className: 'session-step-badge' },
                     s.current_step_id);
+                badgeWrap.appendChild(stepBadge);
                 header.appendChild(idEl);
-                header.appendChild(stepBadge);
+                header.appendChild(badgeWrap);
                 card.appendChild(header);
+
+                // Start time display
+                var startTime = '--';
+                if (s.started_at) {
+                    var d = new Date(s.started_at * 1000);
+                    startTime = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                }
 
                 // Fields
                 var now = Date.now() / 1000;
                 var elapsed = s.started_at ? formatDuration(now - s.started_at) : '--';
 
                 var fields = [
+                    { label: 'Started', value: startTime },
                     { label: 'Duration', value: elapsed },
                     { label: 'Step', value: s.current_step_id },
                     { label: 'Done', value: s.is_done ? 'Yes' : 'No' },

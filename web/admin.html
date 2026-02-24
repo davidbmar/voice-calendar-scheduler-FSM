@@ -24,6 +24,17 @@
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
 
+        /* ── Dark scrollbars ─────────────────────────── */
+        * {
+            scrollbar-color: #2a2a4a #0f0f1e;
+            scrollbar-width: thin;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-deep); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-active); }
+        ::-webkit-scrollbar-corner { background: var(--bg-deep); }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background: var(--bg-deep);
