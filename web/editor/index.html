@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scheduling Workflow Editor</title>
+  <link rel="stylesheet" href="/styles/main.css" />
+</head>
+<body>
+
+<header>
+  <h1>Scheduling Workflow Editor</h1>
+  <span id="mode-badge">EDITOR</span>
+  <div id="panel-toggles">
+    <button class="panel-toggle active" data-panel="map">MAP</button>
+    <button class="panel-toggle active" data-panel="code">CODE</button>
+    <button class="panel-toggle active" data-panel="session">SESSIONS</button>
+  </div>
+  <button id="save-btn" class="save-btn">SAVE</button>
+</header>
+
+<div class="layout">
+  <!-- Column 1: Workflow map -->
+  <div class="workflow-panel">
+    <div class="panel-header">
+      <div class="panel-label">Workflow Map</div>
+      <button class="panel-expand" id="expand-map" title="Fullscreen map">&#x26F6;</button>
+      <button class="panel-close" data-panel="map">&times;</button>
+    </div>
+    <div id="workflow-map"></div>
+  </div>
+
+  <!-- Resize handle: map ↔ code -->
+  <div class="resize-handle" data-handle="left"></div>
+
+  <!-- Node editor (hidden until opened) -->
+  <div id="node-editor"></div>
+
+  <!-- Column 2: Code view -->
+  <div id="code-view"></div>
+
+  <!-- Resize handle: code ↔ sessions -->
+  <div class="resize-handle" data-handle="right"></div>
+
+  <!-- Column 3: Session Monitor -->
+  <div class="session-panel">
+    <div class="panel-header">
+      <div class="panel-label">Active Sessions</div>
+      <button class="panel-close" data-panel="session">&times;</button>
+    </div>
+    <div id="session-monitor"></div>
+    <div class="panel-header" style="margin-top: 16px">
+      <div class="panel-label">Event Log</div>
+    </div>
+    <div id="event-log"></div>
+  </div>
+</div>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSM Workflow — Voice Calendar Scheduler</title>
+    <style>
+        :root {
+            --bg-deep: #0f0f1e;
+            --bg-main: #1a1a2e;
+            --bg-card: #16213e;
+            --bg-hover: #1e2a4a;
+            --border: #2a2a4a;
+            --border-active: #4a6fa5;
+            --text: #e0e0e0;
+            --text-muted: #7a7a9a;
+            --text-dim: #555580;
+            --accent: #4caf50;
+            --accent-glow: rgba(76, 175, 80, 0.15);
+            --danger: #f44336;
+            --warning: #ff9800;
+            --blue: #64b5f6;
+            --blue-glow: rgba(100, 181, 246, 0.15);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(var(--border) 1px, transparent 1px),
+                linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 60px 60px;
+            opacity: 0.08;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.75rem 1.5rem;
+            background: var(--bg-main);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+        }
+
+        .topbar-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .topbar-badge {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--bg-deep);
+            background: var(--blue);
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+        }
+
+        .topbar-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .topbar-links {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .topbar-links a {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .topbar-links a:hover { color: var(--text); }
+
+        .page {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem 4rem;
+        }
+
+        .section { margin-bottom: 2rem; }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .section-label {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .section-line {
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+
+        /* ── Flow diagram ──────────────────────────────── */
+        .flow-container {
+            overflow-x: auto;
+            padding: 1rem 0;
+        }
+
+        .flow-row {
+            display: flex;
+            align-items: center;
+            gap: 0;
+            min-width: max-content;
+        }
+
+        .flow-step {
+            position: relative;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.85rem 1rem;
+            min-width: 110px;
+            cursor: pointer;
+            transition: border-color 0.25s, box-shadow 0.25s, transform 0.2s;
+            text-align: center;
+        }
+        .flow-step:hover {
+            border-color: var(--border-active);
+            transform: translateY(-2px);
+        }
+
+        .flow-step.selected {
+            border-color: var(--blue);
+            box-shadow: 0 0 12px var(--blue-glow), inset 0 0 8px var(--blue-glow);
+        }
+
+        .flow-step.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 16px var(--accent-glow), inset 0 0 8px var(--accent-glow);
+        }
+        .flow-step.active .flow-step-num {
+            background: var(--accent);
+            color: #fff;
+        }
+
+        .flow-step.completed {
+            opacity: 0.45;
+        }
+
+        .flow-step-num {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.6rem;
+            font-weight: 700;
+            width: 20px;
+            height: 20px;
+            line-height: 20px;
+            border-radius: 50%;
+            background: var(--bg-deep);
+            color: var(--text-muted);
+            margin: 0 auto 0.4rem;
+            text-align: center;
+        }
+
+        .flow-step-name {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 0.35rem;
+            line-height: 1.3;
+        }
+
+        .flow-step-type {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.58rem;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 0.15rem 0.45rem;
+            border-radius: 3px;
+            display: inline-block;
+        }
+        .flow-step-type.llm {
+            background: rgba(76, 175, 80, 0.15);
+            color: var(--accent);
+        }
+        .flow-step-type.tool {
+            background: var(--blue-glow);
+            color: var(--blue);
+        }
+
+        .flow-arrow {
+            display: flex;
+            align-items: center;
+            padding: 0 0.15rem;
+            color: var(--text-dim);
+            font-size: 1.1rem;
+            flex-shrink: 0;
+            user-select: none;
+        }
+        .flow-arrow svg {
+            width: 28px;
+            height: 12px;
+        }
+        .flow-arrow svg line,
+        .flow-arrow svg polyline {
+            stroke: var(--text-dim);
+            stroke-width: 1.5;
+            fill: none;
+        }
+
+        /* ── Session cards ─────────────────────────────── */
+        .sessions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .session-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .session-card:hover { border-color: var(--border-active); }
+        .session-card.highlighted { border-color: var(--accent); }
+
+        .session-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 0.6rem;
+        }
+
+        .session-id {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--blue);
+        }
+
+        .session-step-badge {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.6rem;
+            font-weight: 600;
+            padding: 0.15rem 0.45rem;
+            border-radius: 3px;
+            background: rgba(76, 175, 80, 0.15);
+            color: var(--accent);
+        }
+
+        .session-field {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+        .session-field strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .status-dot {
+            display: inline-block;
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            margin-right: 0.4rem;
+            vertical-align: middle;
+        }
+        .status-dot.on  { background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+        .status-dot.off { background: var(--text-dim); }
+        .status-dot.pulse {
+            background: var(--accent);
+            animation: pulse 2s ease infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 4px var(--accent-glow); }
+            50% { box-shadow: 0 0 12px var(--accent-glow); }
+        }
+
+        .empty-state {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-align: center;
+            padding: 2rem;
+            background: var(--bg-card);
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+        }
+
+        /* ── Detail panel ──────────────────────────────── */
+        .detail-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1.25rem;
+            display: none;
+        }
+        .detail-panel.visible { display: block; }
+
+        .detail-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .detail-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .detail-close {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .detail-close:hover { border-color: var(--text-muted); color: var(--text); }
+
+        .detail-meta {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .detail-meta-item {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.68rem;
+            color: var(--text-muted);
+        }
+        .detail-meta-item strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .detail-label {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.65rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 0.4rem;
+        }
+
+        .detail-textarea {
+            width: 100%;
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.75rem;
+            line-height: 1.6;
+            padding: 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg-deep);
+            color: var(--text);
+            outline: none;
+            resize: vertical;
+            min-height: 120px;
+            transition: border-color 0.2s;
+        }
+        .detail-textarea:focus { border-color: var(--border-active); }
+        .detail-textarea:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .detail-input {
+            width: 100%;
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.75rem;
+            padding: 0.55rem 0.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: var(--bg-deep);
+            color: var(--text);
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .detail-input:focus { border-color: var(--border-active); }
+
+        .detail-field { margin-bottom: 1rem; }
+
+        .detail-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .btn {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.72rem;
+            font-weight: 600;
+            padding: 0.55rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid;
+        }
+
+        .btn-primary {
+            border-color: var(--accent);
+            background: rgba(76, 175, 80, 0.12);
+            color: var(--accent);
+        }
+        .btn-primary:hover { background: rgba(76, 175, 80, 0.25); }
+
+        .btn-secondary {
+            border-color: var(--border);
+            background: transparent;
+            color: var(--text-muted);
+        }
+        .btn-secondary:hover { border-color: var(--text-muted); color: var(--text); }
+
+        .tools-readonly {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-deep);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+        }
+
+        /* ── Toast ──────────────────────────────────────── */
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%) translateY(80px);
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.75rem;
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text);
+            opacity: 0;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            z-index: 100;
+            pointer-events: none;
+        }
+        .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+        .toast.success { border-color: var(--accent); }
+        .toast.error   { border-color: var(--danger); }
+
+        /* ── Animations ────────────────────────────────── */
+        .section {
+            opacity: 0;
+            transform: translateY(12px);
+            animation: fadeUp 0.4s ease forwards;
+        }
+        .section:nth-child(1) { animation-delay: 0.05s; }
+        .section:nth-child(2) { animation-delay: 0.15s; }
+        .section:nth-child(3) { animation-delay: 0.2s; }
+        @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+
+        .session-count {
+            font-family: "SF Mono", Monaco, "Cascadia Code", monospace;
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            margin-left: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="topbar">
+        <div class="topbar-left">
+            <span class="topbar-badge">FSM</span>
+            <span class="topbar-title">Scheduling Workflow</span>
+        </div>
+        <div class="topbar-links">
+            <a href="/admin">Admin</a>
+            <a href="/">App</a>
+        </div>
+    </div>
+
+    <div class="page">
+        <!-- Section 1: Flow Diagram -->
+        <div class="section">
+            <div class="section-header">
+                <span class="section-label">Workflow Flow</span>
+                <div class="section-line"></div>
+            </div>
+            <div class="flow-container">
+                <div class="flow-row" id="flow-row"></div>
+            </div>
+        </div>
+
+        <!-- Section 2: Active Sessions -->
+        <div class="section">
+            <div class="section-header">
+                <span class="section-label">Active Sessions</span>
+                <span class="session-count" id="session-count"></span>
+                <div class="section-line"></div>
+            </div>
+            <div id="sessions-container">
+                <div class="empty-state">No active calls</div>
+            </div>
+        </div>
+
+        <!-- Section 3: Step Detail -->
+        <div class="section">
+            <div class="detail-panel" id="detail-panel">
+                <div class="detail-header">
+                    <span class="detail-title" id="detail-title">Step Detail</span>
+                    <button class="detail-close" id="detail-close">Close</button>
+                </div>
+                <div class="detail-meta" id="detail-meta"></div>
+
+                <div class="detail-field">
+                    <div class="detail-label">System Prompt</div>
+                    <textarea class="detail-textarea" id="detail-prompt" rows="8"></textarea>
+                </div>
+
+                <div class="detail-field">
+                    <div class="detail-label">Narration</div>
+                    <input class="detail-input" id="detail-narration" type="text" placeholder="Spoken before this step runs">
+                </div>
+
+                <div class="detail-field">
+                    <div class="detail-label">Tools</div>
+                    <div class="tools-readonly" id="detail-tools">None</div>
+                </div>
+
+                <div class="detail-actions">
+                    <button class="btn btn-primary" id="detail-save">Save</button>
+                    <button class="btn btn-secondary" id="detail-reset">Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        'use strict';
+
+        var steps = {};
+        var stepOrder = [];
+        var selectedStepId = null;
+        var activeSessionStepId = null;
+        var lastFetchedPrompt = '';
+        var lastFetchedNarration = '';
+
+        // ── Helpers ────────────────────────────────────
+
+        function showToast(msg, type) {
+            var el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = 'toast ' + (type || 'success') + ' show';
+            clearTimeout(el._timer);
+            el._timer = setTimeout(function() { el.classList.remove('show'); }, 2200);
+        }
+
+        function createEl(tag, attrs, text) {
+            var el = document.createElement(tag);
+            if (attrs) {
+                Object.keys(attrs).forEach(function(k) {
+                    if (k === 'className') el.className = attrs[k];
+                    else el.setAttribute(k, attrs[k]);
+                });
+            }
+            if (text) el.textContent = text;
+            return el;
+        }
+
+        function formatDuration(seconds) {
+            var m = Math.floor(seconds / 60);
+            var s = Math.floor(seconds % 60);
+            return m + ':' + (s < 10 ? '0' : '') + s;
+        }
+
+        // ── Load steps ────────────────────────────────
+
+        function loadSteps() {
+            fetch('/api/fsm/steps')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    steps = data.steps;
+                    stepOrder = data.step_order;
+                    renderFlow();
+                })
+                .catch(function() { showToast('Failed to load steps', 'error'); });
+        }
+
+        // ── Render flow diagram ───────────────────────
+
+        function renderFlow() {
+            var row = document.getElementById('flow-row');
+            row.textContent = '';
+
+            stepOrder.forEach(function(sid, i) {
+                var step = steps[sid];
+                if (!step) return;
+
+                // Arrow between steps
+                if (i > 0) {
+                    var arrow = createEl('div', { className: 'flow-arrow' });
+                    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                    svg.setAttribute('viewBox', '0 0 28 12');
+                    var line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    line.setAttribute('x1', '0'); line.setAttribute('y1', '6');
+                    line.setAttribute('x2', '20'); line.setAttribute('y2', '6');
+                    var head = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+                    head.setAttribute('points', '18,2 24,6 18,10');
+                    svg.appendChild(line);
+                    svg.appendChild(head);
+                    arrow.appendChild(svg);
+                    row.appendChild(arrow);
+                }
+
+                var card = createEl('div', { className: 'flow-step', 'data-step-id': sid });
+
+                var num = createEl('div', { className: 'flow-step-num' }, String(i + 1));
+                var name = createEl('div', { className: 'flow-step-name' }, step.name);
+                var typeBadge = createEl('span', {
+                    className: 'flow-step-type ' + step.step_type
+                }, step.step_type.toUpperCase());
+
+                card.appendChild(num);
+                card.appendChild(name);
+                card.appendChild(typeBadge);
+
+                card.addEventListener('click', function() {
+                    selectStep(sid);
+                });
+
+                row.appendChild(card);
+            });
+
+            // Apply active/completed classes if there's an active session
+            updateFlowHighlights();
+        }
+
+        function updateFlowHighlights() {
+            var cards = document.querySelectorAll('.flow-step');
+            cards.forEach(function(card) {
+                var sid = card.getAttribute('data-step-id');
+                card.classList.remove('active', 'completed');
+
+                if (activeSessionStepId) {
+                    var activeIdx = stepOrder.indexOf(activeSessionStepId);
+                    var thisIdx = stepOrder.indexOf(sid);
+                    if (sid === activeSessionStepId) {
+                        card.classList.add('active');
+                    } else if (thisIdx < activeIdx) {
+                        card.classList.add('completed');
+                    }
+                }
+
+                card.classList.toggle('selected', sid === selectedStepId);
+            });
+        }
+
+        // ── Select step for editing ───────────────────
+
+        function selectStep(sid) {
+            selectedStepId = sid;
+            var step = steps[sid];
+            if (!step) return;
+
+            updateFlowHighlights();
+
+            var panel = document.getElementById('detail-panel');
+            panel.classList.add('visible');
+
+            document.getElementById('detail-title').textContent = step.name;
+
+            // Meta info
+            var meta = document.getElementById('detail-meta');
+            meta.textContent = '';
+            meta.appendChild(createEl('span', { className: 'detail-meta-item' },
+                'ID: ' + sid));
+            meta.appendChild(createEl('span', { className: 'detail-meta-item' },
+                'Type: ' + step.step_type.toUpperCase()));
+            if (step.next_step) {
+                meta.appendChild(createEl('span', { className: 'detail-meta-item' },
+                    'Next: ' + step.next_step));
+            } else {
+                meta.appendChild(createEl('span', { className: 'detail-meta-item' },
+                    'Terminal state'));
+            }
+
+            // System prompt
+            var promptEl = document.getElementById('detail-prompt');
+            promptEl.value = step.system_prompt || '';
+            promptEl.disabled = step.step_type !== 'llm';
+            lastFetchedPrompt = step.system_prompt || '';
+
+            // Narration
+            var narrEl = document.getElementById('detail-narration');
+            narrEl.value = step.narration || '';
+            lastFetchedNarration = step.narration || '';
+
+            // Tools
+            var toolsEl = document.getElementById('detail-tools');
+            if (step.tool_names && step.tool_names.length > 0) {
+                toolsEl.textContent = step.tool_names.join(', ');
+            } else {
+                toolsEl.textContent = 'None';
+            }
+        }
+
+        function closeDetail() {
+            selectedStepId = null;
+            document.getElementById('detail-panel').classList.remove('visible');
+            updateFlowHighlights();
+        }
+
+        function saveStep() {
+            if (!selectedStepId) return;
+
+            var step = steps[selectedStepId];
+            var body = {};
+            var promptVal = document.getElementById('detail-prompt').value;
+            var narrVal = document.getElementById('detail-narration').value;
+
+            if (step.step_type === 'llm' && promptVal !== lastFetchedPrompt) {
+                body.system_prompt = promptVal;
+            }
+            if (narrVal !== lastFetchedNarration) {
+                body.narration = narrVal;
+            }
+
+            if (Object.keys(body).length === 0) {
+                showToast('No changes to save');
+                return;
+            }
+
+            fetch('/api/fsm/steps/' + selectedStepId, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            })
+            .then(function(r) {
+                if (!r.ok) return r.json().then(function(d) { throw new Error(d.error); });
+                return r.json();
+            })
+            .then(function(updated) {
+                steps[selectedStepId] = updated;
+                lastFetchedPrompt = updated.system_prompt || '';
+                lastFetchedNarration = updated.narration || '';
+                showToast('Step updated');
+            })
+            .catch(function(e) {
+                showToast(e.message || 'Save failed', 'error');
+            });
+        }
+
+        function resetStep() {
+            if (!selectedStepId) return;
+            document.getElementById('detail-prompt').value = lastFetchedPrompt;
+            document.getElementById('detail-narration').value = lastFetchedNarration;
+            showToast('Reset to last saved');
+        }
+
+        // ── Sessions polling ──────────────────────────
+
+        function loadSessions() {
+            fetch('/api/fsm/sessions')
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    renderSessions(data.sessions, data.count);
+                })
+                .catch(function() { /* silent — poll will retry */ });
+        }
+
+        function renderSessions(sessions, count) {
+            var container = document.getElementById('sessions-container');
+            var countEl = document.getElementById('session-count');
+            container.textContent = '';
+
+            countEl.textContent = count > 0 ? count + ' active' : '';
+
+            if (!sessions || sessions.length === 0) {
+                activeSessionStepId = null;
+                container.appendChild(createEl('div', { className: 'empty-state' },
+                    'No active calls'));
+                updateFlowHighlights();
+                return;
+            }
+
+            var grid = createEl('div', { className: 'sessions-grid' });
+
+            sessions.forEach(function(s) {
+                var card = createEl('div', { className: 'session-card' });
+
+                // Header
+                var header = createEl('div', { className: 'session-card-header' });
+                var idEl = createEl('span', { className: 'session-id' }, s.session_id);
+                var stepBadge = createEl('span', { className: 'session-step-badge' },
+                    s.current_step_id);
+                header.appendChild(idEl);
+                header.appendChild(stepBadge);
+                card.appendChild(header);
+
+                // Fields
+                var now = Date.now() / 1000;
+                var elapsed = s.started_at ? formatDuration(now - s.started_at) : '--';
+
+                var fields = [
+                    { label: 'Duration', value: elapsed },
+                    { label: 'Step', value: s.current_step_id },
+                    { label: 'Done', value: s.is_done ? 'Yes' : 'No' },
+                ];
+
+                if (s.caller_state) {
+                    if (s.caller_state.phone_number) {
+                        fields.push({ label: 'Phone', value: s.caller_state.phone_number });
+                    }
+                    if (s.caller_state.caller_name) {
+                        fields.push({ label: 'Name', value: s.caller_state.caller_name });
+                    }
+                }
+
+                fields.forEach(function(f) {
+                    var line = createEl('div', { className: 'session-field' });
+                    var strong = createEl('strong', null, f.label + ': ');
+                    line.appendChild(strong);
+                    line.appendChild(document.createTextNode(f.value));
+                    card.appendChild(line);
+                });
+
+                // Click to highlight step
+                card.addEventListener('click', function() {
+                    activeSessionStepId = s.current_step_id;
+                    // Highlight this card
+                    document.querySelectorAll('.session-card').forEach(function(c) {
+                        c.classList.remove('highlighted');
+                    });
+                    card.classList.add('highlighted');
+                    updateFlowHighlights();
+                });
+
+                grid.appendChild(card);
+            });
+
+            container.appendChild(grid);
+
+            // Auto-highlight the first session's step
+            if (sessions.length > 0) {
+                activeSessionStepId = sessions[0].current_step_id;
+                updateFlowHighlights();
+            }
+        }
+
+        // ── Events ────────────────────────────────────
+
+        document.getElementById('detail-close').addEventListener('click', closeDetail);
+        document.getElementById('detail-save').addEventListener('click', saveStep);
+        document.getElementById('detail-reset').addEventListener('click', resetStep);
+
+        // ── Init ──────────────────────────────────────
+
+        loadSteps();
+        loadSessions();
+        setInterval(loadSessions, 3000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Calendar Scheduler</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 480px;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: #f0f0f0;
+        }
+
+        .subtitle {
+            font-size: 0.875rem;
+            color: #888;
+            margin-bottom: 2rem;
+        }
+
+        #status {
+            font-size: 0.9rem;
+            color: #aaa;
+            margin-bottom: 1.5rem;
+            min-height: 1.5em;
+        }
+
+        #status.connected {
+            color: #4caf50;
+        }
+
+        #status.error {
+            color: #f44336;
+        }
+
+        #status.calling {
+            color: #ff9800;
+        }
+
+        #call-btn {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: none;
+            background: #4caf50;
+            color: white;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 2rem;
+        }
+
+        #call-btn:hover {
+            background: #43a047;
+            transform: scale(1.05);
+        }
+
+        #call-btn:active {
+            transform: scale(0.95);
+        }
+
+        #call-btn.hangup {
+            background: #f44336;
+        }
+
+        #call-btn.hangup:hover {
+            background: #e53935;
+        }
+
+        #call-btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .log {
+            text-align: left;
+            background: #16213e;
+            border-radius: 8px;
+            padding: 1rem;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 0.75rem;
+            line-height: 1.6;
+            color: #888;
+        }
+
+        .log .entry {
+            padding: 2px 0;
+            border-bottom: 1px solid #1a1a3e;
+        }
+
+        .log .entry:last-child {
+            border-bottom: none;
+        }
+
+        .log .entry.info {
+            color: #64b5f6;
+        }
+
+        .log .entry.error {
+            color: #ef5350;
+        }
+
+        .nav-links {
+            display: flex;
+            justify-content: center;
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .nav-links a {
+            font-family: "SF Mono", Monaco, monospace;
+            font-size: 0.72rem;
+            color: #7a7a9a;
+            text-decoration: none;
+            padding: 0.4rem 0.8rem;
+            border: 1px solid #2a2a4a;
+            border-radius: 5px;
+            transition: all 0.2s;
+        }
+        .nav-links a:hover {
+            color: #e0e0e0;
+            border-color: #4a6fa5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Voice Calendar Scheduler</h1>
+        <p class="subtitle">Browser WebRTC Client</p>
+
+        <div id="status">Disconnected</div>
+
+        <button id="call-btn" disabled>Call</button>
+
+        <div id="log" class="log"></div>
+
+        <div class="nav-links">
+            <a href="/editor">Workflow Editor</a>
+            <a href="/admin">Admin</a>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+[submodule "engine-repo"]
+	path = engine-repo
+	url = https://github.com/davidbmar/iphone-streaming-plus-Finite-State-Machine.git
