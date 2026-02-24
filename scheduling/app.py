@@ -139,8 +139,9 @@ def create_app() -> FastAPI:
                 caller_info.get("call_sid", "unknown"),
             )
 
-            # Create scheduling session (no calendar provider yet — add in config)
-            session = _create_session()
+            # Create scheduling session with the live (possibly editor-modified) workflow
+            live_wf = _workflows.get(WORKFLOW_DEF.id)
+            session = _create_session(workflow=live_wf)
             session.start(caller_info)
             sid = register_session(session)
             session.attach_broadcaster(get_broadcaster(sid))
@@ -418,7 +419,8 @@ def create_app() -> FastAPI:
         """Create a fake session for testing the debug UI."""
         import asyncio
 
-        session = _create_session()
+        live_wf = _workflows.get(WORKFLOW_DEF.id)
+        session = _create_session(workflow=live_wf)
         session.start({"phone_number": "+15551234567", "call_sid": "DEMO"})
         sid = register_session(session)
         session.attach_broadcaster(get_broadcaster(sid))
@@ -664,8 +666,15 @@ def create_app() -> FastAPI:
 
 # ── Helper functions ──────────────────────────────────────────────
 
-def _create_session() -> SchedulingSession:
-    """Create a SchedulingSession with configured providers."""
+def _create_session(workflow=None) -> SchedulingSession:
+    """Create a SchedulingSession with configured providers.
+
+    Args:
+        workflow: Optional SchedulingWorkflowDef to use. When provided,
+                  the session uses this (live-edited) workflow instead of
+                  the stale module-level default. This is how editor changes
+                  take effect without a server restart.
+    """
     calendar_provider = None
     if settings.google_service_account_json:
         try:
@@ -677,6 +686,7 @@ def _create_session() -> SchedulingSession:
             log.warning("Google Calendar not configured: %s", e)
 
     return SchedulingSession(
+        workflow=workflow,
         calendar_provider=calendar_provider,
         calendar_id=settings.google_calendar_id,
     )

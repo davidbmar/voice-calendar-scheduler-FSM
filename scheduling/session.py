@@ -412,28 +412,23 @@ class SchedulingSession:
         return "\n".join(results)
 
     async def _get_step_opening(self, state: SchedulingStateDef) -> str:
-        """Generate the LLM's opening for a new conversational step."""
+        """Generate the LLM's opening for a new conversational step.
+
+        Uses the state's on_enter field from the JSONL workflow definition
+        as the prompt. This is fully data-driven — editing on_enter in the
+        editor changes what the LLM says when entering that state. Falls back
+        to a generic prompt if on_enter is empty.
+        """
         system = self._render_system_prompt(state)
 
-        # Use data-driven prompt generation based on state ID
-        prompts = {
-            "greet_and_gather": (
-                "The caller just greeted you. Now ask what they're looking for — "
-                "bedrooms, budget, preferred area, move-in date. "
-                "Be warm and conversational, ask one or two questions to start."
-            ),
-            "present_options": (
-                "Present the apartment search results to the caller. "
-                "Describe the top options naturally."
-            ),
-            "propose_times": "Present the available viewing time slots to the caller.",
-            "collect_details": (
-                "Ask the caller for their name and email to complete the booking."
-            ),
-            "confirm_done": "Confirm the booking details and say goodbye.",
-            "search_error": "Apologize for the search error and offer to try again.",
-        }
-        prompt = prompts.get(state.id, "Continue the conversation.")
+        # Data-driven: use on_enter from the JSONL workflow definition
+        if state.on_enter:
+            prompt = (
+                f"You are now entering this conversation step. "
+                f"Say this to the caller (rephrase naturally): {state.on_enter}"
+            )
+        else:
+            prompt = "Continue the conversation."
 
         return await self._call_llm(system, prompt)
 
