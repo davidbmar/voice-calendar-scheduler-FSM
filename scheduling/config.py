@@ -46,9 +46,10 @@ runtime_settings = {
     "vad_speech_confirm_frames": 1,
     # VAD: silence frames after speech to trigger transcription (8 = ~0.8s)
     "vad_silence_gap": 8,
-    # Barge-in (during TTS playback): high threshold to filter echo/typing
-    # Voice is ~1500+, typing ~300-800, TTS echo ~200-600
-    "barge_in_energy_threshold": 1500,
-    # Barge-in: 5 consecutive frames (~500ms ≈ word-length) to confirm interruption
-    "barge_in_confirm_frames": 5,
+    # Barge-in (during TTS playback): threshold to detect user speech over echo.
+    # Browser echoCancellation handles most TTS echo (~200-600 after AEC).
+    # Human speech typically 800-3000+, so 600 works well with echo cancellation active.
+    "barge_in_energy_threshold": 600,
+    # Barge-in: 2 consecutive polls (~200ms) to confirm — responsive to short phrases.
+    "barge_in_confirm_frames": 2,
 }

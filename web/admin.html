@@ -501,26 +501,42 @@
                     <div class="slider-row" style="margin-bottom:1rem;">
                         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.3rem;">
                             <label style="font-size:0.85rem; color:var(--text);">Barge-in Threshold (RMS)</label>
-                            <span id="barge-threshold-val" style="font-family:monospace; font-size:0.85rem; color:var(--accent);">1500</span>
+                            <span id="barge-threshold-val" style="font-family:monospace; font-size:0.85rem; color:var(--accent);">600</span>
                         </div>
-                        <input type="range" id="barge-threshold" min="500" max="5000" step="100" value="1500" style="width:100%;">
+                        <p style="font-size:0.72rem; color:var(--text-dim); margin:0 0 0.4rem 0; line-height:1.4;">
+                            How loud the caller's voice must be (RMS energy) to count as speech while the bot is talking.
+                            Lower = more sensitive (catches quiet speakers, but may false-trigger on echo).
+                            Higher = requires louder speech to interrupt.
+                            Browser echo cancellation already filters most TTS bleed, so 600&ndash;1000 works for most setups.
+                            <br><em>Example: At 600, a normal "excuse me" registers ~1000&ndash;2000 RMS and triggers,
+                            but background hum (~200) and residual echo (~400) are ignored.</em>
+                        </p>
+                        <input type="range" id="barge-threshold" min="300" max="5000" step="100" value="600" style="width:100%;">
                         <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-dim);">
-                            <span>Typing (~500)</span>
-                            <span>Voice (~1500)</span>
-                            <span>Shouting (~5000)</span>
+                            <span>Sensitive (300)</span>
+                            <span>Normal (800)</span>
+                            <span>Loud only (5000)</span>
                         </div>
                     </div>
 
                     <div class="slider-row">
                         <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0.3rem;">
                             <label style="font-size:0.85rem; color:var(--text);">Barge-in Confirm</label>
-                            <span id="barge-confirm-val" style="font-family:monospace; font-size:0.85rem; color:var(--accent);">500ms</span>
+                            <span id="barge-confirm-val" style="font-family:monospace; font-size:0.85rem; color:var(--accent);">200ms</span>
                         </div>
-                        <input type="range" id="barge-confirm" min="1" max="10" step="1" value="5" style="width:100%;">
+                        <p style="font-size:0.72rem; color:var(--text-dim); margin:0 0 0.4rem 0; line-height:1.4;">
+                            How long the caller must speak above the threshold before the bot stops talking.
+                            Each tick is one 100ms check. The speech must be sustained for this many consecutive checks.
+                            Lower = faster interruption (but a cough or bump could trigger it).
+                            Higher = more certain it's real speech before cutting the bot off.
+                            <br><em>Example: At 2 (200ms), starting to say "I need&mdash;" is enough to interrupt.
+                            At 5 (500ms), the caller needs to say a full word like "hello" before the bot stops.</em>
+                        </p>
+                        <input type="range" id="barge-confirm" min="1" max="10" step="1" value="2" style="width:100%;">
                         <div style="display:flex; justify-content:space-between; font-size:0.7rem; color:var(--text-dim);">
                             <span>Instant (100ms)</span>
-                            <span>Word (500ms)</span>
-                            <span>Sentence (1s)</span>
+                            <span>Quick (300ms)</span>
+                            <span>Cautious (1s)</span>
                         </div>
                     </div>
                 </div>
@@ -680,11 +696,11 @@
 
             // Barge-in sliders
             var bargeThresholdSlider = document.getElementById('barge-threshold');
-            bargeThresholdSlider.value = config.barge_in_energy_threshold || 1500;
+            bargeThresholdSlider.value = config.barge_in_energy_threshold || 600;
             document.getElementById('barge-threshold-val').textContent = bargeThresholdSlider.value;
 
             var bargeConfirmSlider = document.getElementById('barge-confirm');
-            bargeConfirmSlider.value = config.barge_in_confirm_frames || 5;
+            bargeConfirmSlider.value = config.barge_in_confirm_frames || 2;
             document.getElementById('barge-confirm-val').textContent = (bargeConfirmSlider.value * 100) + 'ms';
 
             // Grey out barge-in settings when disabled

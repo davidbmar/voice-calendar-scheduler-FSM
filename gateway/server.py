@@ -167,38 +167,100 @@ async def _wait_for_playback(real, duration: float, session) -> bool:
     """Wait for TTS playback, optionally detecting barge-in.
 
     Returns True if interrupted by user speech, False if played to completion.
+    On barge-in, preserves recent mic frames (the speech that triggered it)
+    instead of discarding them, then transcribes them for debug logging.
     """
     from scheduling.config import runtime_settings
 
     POLL_INTERVAL = 0.1  # 100ms
     BARGE_IN_THRESHOLD = runtime_settings.get("barge_in_energy_threshold", 1500)
     BARGE_IN_CONFIRM = runtime_settings.get("barge_in_confirm_frames", 5)  # ~500ms sustained speech
+    FRAMES_PER_POLL = 5  # ~20ms per mic frame at 48kHz, 5 frames per 100ms poll
     elapsed = 0.0
     barge_confirm = 0
+    poll_num = 0
+    max_rms_seen = 0.0
+
+    log.info("[BARGE-IN] Playback started: duration=%.1fs, threshold=%d, confirm_needed=%d, enabled=%s",
+             duration, BARGE_IN_THRESHOLD, BARGE_IN_CONFIRM, runtime_settings.get("barge_in_enabled", False))
 
     while elapsed < duration:
         await asyncio.sleep(POLL_INTERVAL)
         elapsed += POLL_INTERVAL
+        poll_num += 1
 
         if not runtime_settings.get("barge_in_enabled", False):
             continue  # just sleep, don't check mic
 
-        # Check latest mic frame for user speech
+        # Check mic frames that arrived since last poll.
+        # Instead of only the last frame, check max RMS across recent frames
+        # to avoid missing speech due to frame-boundary sampling.
         if real._mic_frames:
-            rms = _compute_rms(real._mic_frames[-1])
+            recent_frames = real._mic_frames[-FRAMES_PER_POLL:]
+            rms_values = [_compute_rms(f) for f in recent_frames]
+            rms = max(rms_values) if rms_values else 0.0
+            if rms > max_rms_seen:
+                max_rms_seen = rms
+
+            # Log every poll so we can see what's happening
+            log.info("[BARGE-IN] poll #%d elapsed=%.1f/%0.1fs rms=%.0f (max_seen=%.0f) threshold=%d confirm=%d/%d frames=%d",
+                     poll_num, elapsed, duration, rms, max_rms_seen, BARGE_IN_THRESHOLD,
+                     barge_confirm, BARGE_IN_CONFIRM, len(real._mic_frames))
+
             if rms >= BARGE_IN_THRESHOLD:
                 barge_confirm += 1
                 if barge_confirm >= BARGE_IN_CONFIRM:
-                    log.info("[BARGE-IN] User speech confirmed (rms=%.0f, %d frames), stopping TTS", rms, barge_confirm)
+                    log.info("[BARGE-IN] >>> CONFIRMED! User speech detected (rms=%.0f, %d consecutive frames), stopping TTS <<<",
+                             rms, barge_confirm)
                     session.stop_speaking()
-                    real._mic_frames.clear()
+                    # Keep recent speech frames instead of clearing everything.
+                    frames_to_keep = (barge_confirm + 1) * FRAMES_PER_POLL
+                    real._mic_frames = real._mic_frames[-frames_to_keep:]
+                    preserved_bytes = sum(len(f) for f in real._mic_frames)
+                    log.info("[BARGE-IN] Preserved %d frames (%d bytes, ~%.0fms) for transcription",
+                             len(real._mic_frames), preserved_bytes, preserved_bytes / (48000 * 2) * 1000)
+                    # Debug: transcribe the preserved frames to show what was captured
+                    await _log_barge_in_transcript(real._mic_frames)
                     return True
             else:
+                if barge_confirm > 0:
+                    log.info("[BARGE-IN] Confirm reset (was %d, rms=%.0f dropped below %d)", barge_confirm, rms, BARGE_IN_THRESHOLD)
                 barge_confirm = 0  # must be consecutive
 
-    # Played to completion — flush echo frames
+    # Played to completion — check if user started speaking at the tail end
+    log.info("[BARGE-IN] Playback complete (%.1fs). Checking tail frames... (max_rms_seen=%.0f)", duration, max_rms_seen)
+    if real._mic_frames:
+        # Check last few polls worth of frames
+        tail_frames = real._mic_frames[-FRAMES_PER_POLL * 3:]
+        tail_rms_values = [_compute_rms(f) for f in tail_frames]
+        tail_rms = max(tail_rms_values) if tail_rms_values else 0.0
+        log.info("[BARGE-IN] Tail check: %d frames, max_rms=%.0f, threshold=%d",
+                 len(tail_frames), tail_rms, BARGE_IN_THRESHOLD)
+        if tail_rms >= BARGE_IN_THRESHOLD:
+            # User is speaking as TTS ended — preserve recent frames
+            frames_to_keep = FRAMES_PER_POLL * 3  # ~300ms
+            real._mic_frames = real._mic_frames[-frames_to_keep:]
+            preserved_bytes = sum(len(f) for f in real._mic_frames)
+            log.info("[BARGE-IN] Late speech detected (rms=%.0f), preserved %d frames (%d bytes, ~%.0fms)",
+                     tail_rms, len(real._mic_frames), preserved_bytes, preserved_bytes / (48000 * 2) * 1000)
+            await _log_barge_in_transcript(real._mic_frames)
+            return True
     real._mic_frames.clear()
+    log.info("[BARGE-IN] No speech detected during playback, cleared frames")
     return False
+
+
+async def _log_barge_in_transcript(frames: list) -> None:
+    """Debug helper: transcribe preserved barge-in frames and log the result."""
+    try:
+        pcm = b"".join(frames)
+        text = await _transcribe_webrtc(pcm)
+        if text and text.strip():
+            log.info("[BARGE-IN] >>> Captured speech: %r <<<", text)
+        else:
+            log.info("[BARGE-IN] Transcription returned empty (frames may be too short or noisy)")
+    except Exception as e:
+        log.warning("[BARGE-IN] Debug transcription failed: %s", e)
 
 
 async def _start_voice_loop(session: Session, scheduling_session) -> None:
@@ -251,7 +313,7 @@ async def _start_voice_loop(session: Session, scheduling_session) -> None:
 
         silence_count = 0
         speech_confirm_count = 0   # consecutive frames above threshold
-        has_speech = False
+        has_speech = interrupted    # If user barged into greeting, their speech is in the buffer
         poll_count = 0
 
         while not scheduling_session.is_done:
@@ -328,10 +390,17 @@ async def _start_voice_loop(session: Session, scheduling_session) -> None:
                         duration = await _speak(session, response)
                         log.info("Response duration: %.1fs, waiting for playback...", duration)
                         interrupted = await _wait_for_playback(real, duration, session)
-                        has_speech = False
+                        if interrupted:
+                            has_speech = True  # User is speaking — preserved frames in buffer
+                            n_preserved = len(real._mic_frames)
+                            preserved_bytes = sum(len(f) for f in real._mic_frames)
+                            log.info("[VAD] Post-barge-in: has_speech=True, %d preserved frames (%d bytes), VAD will continue collecting",
+                                     n_preserved, preserved_bytes)
+                        else:
+                            has_speech = False
+                            log.info("[VAD] Playback finished normally, has_speech=False, waiting for new speech")
                         silence_count = 0
                         speech_confirm_count = 0
-                        log.info("Response %s, listening for user", "interrupted" if interrupted else "done")
 
             # Prevent unbounded buffer growth
             elif total > MAX_BUFFER:
