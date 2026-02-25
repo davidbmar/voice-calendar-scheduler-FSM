@@ -331,7 +331,7 @@ class TestSessionSerialization:
         assert "session_id" in d
         assert "current_step_id" in d
         assert "is_done" in d
-        assert d["current_step_id"] == "greet_and_gather"
+        assert d["current_step_id"] == "hello"
         assert d["is_done"] is False
 
     def test_to_dict_detail(self):
@@ -350,8 +350,8 @@ class TestLoaderRoundTrip:
     def test_load_and_verify(self):
         """The loaded workflow should match expected structure."""
         assert WORKFLOW_DEF.id == "apartment_viewing"
-        assert WORKFLOW_DEF.initial_state == "greet_and_gather"
-        assert len(WORKFLOW_DEF.states) == 9
+        assert WORKFLOW_DEF.initial_state == "hello"
+        assert len(WORKFLOW_DEF.states) == 10
 
     def test_save_and_reload(self, tmp_path):
         """Saving and reloading a workflow should preserve all data."""

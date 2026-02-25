@@ -127,10 +127,11 @@ class TestApartmentSearchTool:
     @pytest.mark.asyncio
     async def test_connection_error(self):
         """Should return a friendly error when RAG service is down."""
-        tool = ApartmentSearchTool()
-        # Default RAG_URL (localhost:8000) is not running in tests
-        result = await tool.execute(query="2 bedroom downtown")
-        assert "unavailable" in result.lower() or "error" in result.lower()
+        from unittest.mock import patch
+        with patch("scheduling.tools.apartment_search.RAG_URL", "http://localhost:19999"):
+            tool = ApartmentSearchTool()
+            result = await tool.execute(query="2 bedroom downtown")
+            assert "unavailable" in result.lower() or "error" in result.lower()
 
     def test_format_results(self):
         """Test the result formatter with mock RAG output."""

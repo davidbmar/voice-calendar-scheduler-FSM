@@ -20,12 +20,12 @@ from scheduling.workflows.apartment_viewing import (
 
 
 class TestWorkflowDefinition:
-    def test_has_8_steps(self):
-        assert len(STEPS) == 8
-        assert len(STEP_ORDER) == 8
+    def test_has_9_steps(self):
+        assert len(STEPS) == 9
+        assert len(STEP_ORDER) == 9
 
     def test_first_step(self):
-        assert FIRST_STEP == "greet_and_gather"
+        assert FIRST_STEP == "hello"
 
     def test_step_order_matches_dict(self):
         """Every step in STEP_ORDER should exist in STEPS dict."""
@@ -148,8 +148,8 @@ class TestBranchingTransitions:
         """The workflow's initial_state must be a valid state."""
         assert WORKFLOW_DEF.initial_state in WORKFLOW_DEF.states
 
-    def test_initial_state_is_greet(self):
-        assert WORKFLOW_DEF.initial_state == "greet_and_gather"
+    def test_initial_state_is_hello(self):
+        assert WORKFLOW_DEF.initial_state == "hello"
 
 
 class TestBranchingPaths:
@@ -349,8 +349,8 @@ class TestWorkflowSchemaValidation:
                 )
 
     def test_state_count(self):
-        """The apartment workflow should have 9 states (original 8 + search_error)."""
-        assert len(WORKFLOW_DEF.states) == 9
+        """The apartment workflow should have 10 states (hello + 8 original + search_error)."""
+        assert len(WORKFLOW_DEF.states) == 10
 
     def test_exit_phrases(self):
         assert len(WORKFLOW_DEF.exit_phrases) >= 3
