@@ -167,11 +167,11 @@
         // Handle incoming audio track from server (TTS)
         pc.ontrack = function (event) {
             logMsg("Remote audio track received");
-            var audio = new Audio();
-            audio.srcObject = event.streams[0];
-            audio.play().catch(function (e) {
-                logMsg("Audio autoplay blocked: " + e.message, "error");
-            });
+            var audio = document.createElement("audio");
+            audio.autoplay = true;
+            audio.playsInline = true;
+            audio.srcObject = event.streams[0] || new MediaStream([event.track]);
+            document.body.appendChild(audio);
         };
 
         // ICE connection state
@@ -188,12 +188,36 @@
             }
         };
 
-        // Create and send SDP offer
+        // Create and send SDP offer (wait for ICE gathering so
+        // TURN relay candidates are included — required for mobile/NAT)
         try {
             var offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
-            logMsg("Sending SDP offer");
+            logMsg("Gathering ICE candidates...");
+            setStatus("Gathering candidates...", "calling");
+
+            // Wait for ICE gathering to complete before sending the offer.
+            // Without this, the SDP has no candidates and the remote peer
+            // can't reach us (especially through symmetric NATs / mobile).
+            await new Promise(function (resolve) {
+                if (pc.iceGatheringState === "complete") {
+                    resolve();
+                    return;
+                }
+                var timer = setTimeout(function () {
+                    logMsg("ICE gathering timed out after 10s, proceeding with partial candidates", "error");
+                    resolve();
+                }, 10000);
+                pc.onicegatheringstatechange = function () {
+                    if (pc.iceGatheringState === "complete") {
+                        clearTimeout(timer);
+                        resolve();
+                    }
+                };
+            });
+
+            logMsg("Sending SDP offer (" + (pc.localDescription.sdp.match(/a=candidate/g) || []).length + " candidates)");
             setStatus("Connecting call...", "calling");
 
             ws.send(
