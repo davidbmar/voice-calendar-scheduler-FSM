@@ -198,7 +198,7 @@ echo -e "  ${DIM}exists but is malformed, or config values that conflict with ea
 echo -e "  ${DIM}Any warnings here are non-fatal; errors will stop the script.${NC}"
 echo ""
 
-export PYTHONPATH=".:engine-repo"
+export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/engine-repo"
 "$PROJECT_ROOT/.venv/bin/python" -c "
 from scheduling.config import settings
 warnings = settings.validate_startup()

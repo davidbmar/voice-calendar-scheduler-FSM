@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # Google Calendar
     google_service_account_json: str = ""
     google_calendar_id: str = "primary"
+    calendar_timezone: str = "America/Chicago"
 
     # RAG
     rag_service_url: str = "http://localhost:8000"

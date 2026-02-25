@@ -12,6 +12,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 # ---------------------------------------------------------------------------
 # Import BaseTool from the engine-repo package that sits alongside this tree.
@@ -23,6 +24,7 @@ if _ENGINE_REPO not in sys.path:
 from voice_assistant.tools.base import BaseTool  # noqa: E402
 
 from scheduling.calendar_providers.base import CalendarProvider  # noqa: E402
+from scheduling.config import settings  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -83,19 +85,20 @@ class CheckAvailabilityTool(BaseTool):
         """Query the calendar provider and format results for the LLM."""
         date_str: str = kwargs.get("date", "")
         days_ahead: int = int(kwargs.get("days_ahead", 3))
+        local_tz = ZoneInfo(settings.calendar_timezone)
 
         if date_str:
             try:
                 start_date = datetime.strptime(date_str, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
+                    tzinfo=local_tz
                 )
             except ValueError:
                 return f"Invalid date format: {date_str!r}. Please use YYYY-MM-DD."
         else:
-            now = datetime.now(tz=timezone.utc)
+            now = datetime.now(tz=local_tz)
             start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-        # Search window: start_date 09:00 to (start_date + days_ahead) 18:00
+        # Search window: start_date 09:00 to (start_date + days_ahead) 18:00 local
         range_start = start_date.replace(hour=9, minute=0, second=0)
         range_end = (start_date + timedelta(days=days_ahead)).replace(
             hour=18, minute=0, second=0
@@ -107,6 +110,7 @@ class CheckAvailabilityTool(BaseTool):
                 start=range_start,
                 end=range_end,
                 duration_minutes=30,
+                tz=local_tz,
             )
         except Exception:
             logger.exception("Failed to query calendar availability")

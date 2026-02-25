@@ -5,7 +5,7 @@ set -e
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-export PYTHONPATH=".:engine-repo"
+export PYTHONPATH="$PROJECT_ROOT:$PROJECT_ROOT/engine-repo"
 
 VENV_PY="$PROJECT_ROOT/.venv/bin/python"
 VENV_UVICORN="$PROJECT_ROOT/.venv/bin/uvicorn"

@@ -12,6 +12,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 # ---------------------------------------------------------------------------
 # Import BaseTool from the engine-repo package.
@@ -26,6 +27,7 @@ from scheduling.calendar_providers.base import (  # noqa: E402
     CalendarEvent,
     CalendarProvider,
 )
+from scheduling.config import settings  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -102,11 +104,12 @@ class CreateBookingTool(BaseTool):
         caller_name: str = kwargs["name"]
         caller_email: str = kwargs["email"]
 
-        # Parse start time
+        # Parse start time in local timezone
+        local_tz = ZoneInfo(settings.calendar_timezone)
         try:
             start_dt = datetime.strptime(
                 f"{date_str} {time_str}", "%Y-%m-%d %H:%M"
-            ).replace(tzinfo=timezone.utc)
+            ).replace(tzinfo=local_tz)
         except ValueError:
             return (
                 f"Invalid date/time: {date_str} {time_str}. "
