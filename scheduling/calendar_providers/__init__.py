@@ -1,5 +1,5 @@
-"""Calendar provider abstractions and implementations."""
+"""Re-export from cal-provider package."""
 
-from .base import CalendarEvent, CalendarProvider, TimeSlot
+from cal_provider import CalendarEvent, CalendarProvider, TimeSlot
 
 __all__ = ["CalendarProvider", "CalendarEvent", "TimeSlot"]

@@ -61,7 +61,11 @@ class TestCalendarProviderABC:
     def test_concrete_implementation(self):
         """A concrete subclass must implement all abstract methods."""
         class MockProvider(CalendarProvider):
+            async def list_calendars(self):
+                return []
             async def get_available_slots(self, calendar_id, start, end, duration_minutes=60):
+                return []
+            async def get_events(self, calendar_id, start, end):
                 return []
             async def create_event(self, calendar_id, event):
                 return {}
@@ -80,9 +84,9 @@ class TestGoogleCalendarProvider:
     def mock_provider(self):
         """Create a GoogleCalendarProvider with mocked Google APIs."""
         with patch(
-            "scheduling.calendar_providers.google.Credentials"
+            "cal_provider.providers.google.Credentials"
         ) as mock_creds, patch(
-            "scheduling.calendar_providers.google.build"
+            "cal_provider.providers.google.build"
         ) as mock_build:
             mock_creds.from_service_account_file.return_value = MagicMock()
 
