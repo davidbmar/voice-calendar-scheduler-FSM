@@ -261,6 +261,95 @@ The app uses the `https://www.googleapis.com/auth/calendar` scope for full read/
 
 **If not configured**, the startup script shows a warning and the app runs without calendar tools — the FSM conversation still works but skips the availability-check and booking steps.
 
+### cal-provider Library (Standalone Calendar Package)
+
+The calendar integration layer has been extracted into a standalone Python library at `../cal-provider/`. This means you can reuse the same calendar backends (Google, CalDAV) from other projects or expose them as an MCP server for AI agents.
+
+**This project already uses it** — `scheduling/calendar_providers/` is a thin re-export shim that delegates to `cal-provider`. No configuration changes needed for the FSM.
+
+#### Using cal-provider in other projects
+
+```bash
+# Install from local path (pick the backends you need)
+pip install -e "../cal-provider[google]"   # Google Calendar only
+pip install -e "../cal-provider[caldav]"   # CalDAV only (iCloud, Nextcloud, Fastmail)
+pip install -e "../cal-provider[all]"      # Everything + MCP server
+```
+
+```python
+from cal_provider import get_provider
+
+# Google Calendar
+provider = get_provider("google", service_account_path="/path/to/sa.json")
+
+# CalDAV (iCloud)
+provider = get_provider("caldav",
+    url="https://caldav.icloud.com/",
+    username="you@icloud.com",
+    password="app-specific-password",
+)
+
+# Same API regardless of backend
+calendars = await provider.list_calendars()
+slots = await provider.get_available_slots("primary", start, end, duration_minutes=30)
+events = await provider.get_events("primary", start, end)
+result = await provider.create_event("primary", event)
+await provider.cancel_event("primary", event_id)
+```
+
+#### CalDAV setup (iCloud, Nextcloud, Fastmail)
+
+| Provider | URL | Auth |
+|----------|-----|------|
+| iCloud | `https://caldav.icloud.com/` | Apple ID + [app-specific password](https://appleid.apple.com/) |
+| Nextcloud | `https://your-server/remote.php/dav/` | Account username/password |
+| Fastmail | `https://caldav.fastmail.com/dav/calendars/` | Account username + app password |
+
+#### MCP server (for AI agents)
+
+Expose calendar tools to Claude, Cursor, or any MCP-compatible client:
+
+```bash
+# Set backend
+export CAL_PROVIDER=google
+export GOOGLE_SERVICE_ACCOUNT_JSON=/path/to/sa.json
+
+# Or CalDAV
+export CAL_PROVIDER=caldav
+export CALDAV_URL=https://caldav.icloud.com/
+export CALDAV_USERNAME=you@icloud.com
+export CALDAV_PASSWORD=xxxx-xxxx-xxxx-xxxx
+
+# Start
+cd ../cal-provider
+.venv/bin/cal-provider-mcp
+```
+
+To add to Claude Code, put this in `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "calendar": {
+      "command": "/path/to/cal-provider/.venv/bin/cal-provider-mcp",
+      "env": {
+        "CAL_PROVIDER": "google",
+        "GOOGLE_SERVICE_ACCOUNT_JSON": "/path/to/sa.json"
+      }
+    }
+  }
+}
+```
+
+This gives the AI 6 tools: `list_calendars`, `get_available_slots`, `get_events`, `create_event`, `update_event`, `cancel_event`.
+
+#### Running cal-provider tests
+
+```bash
+cd ../cal-provider
+.venv/bin/python -m pytest tests/ -v   # 40 tests, all mocked (no credentials needed)
+```
+
 ## Security
 
 Admin and debug endpoints are protected by bearer token authentication. Set `ADMIN_API_KEY` in your `.env` to enable it:
@@ -353,7 +442,7 @@ TTS/STT tests gracefully skip if voice models aren't downloaded. Session-only te
 |-------|-------|----------|
 | `test_apartment_search.py` | 10 | Listing model, sample data, search tool |
 | `test_branching_fsm.py` | 30 | FSM transitions, tool args, prompt rendering |
-| `test_calendar_provider.py` | 22 | Google Calendar slots, events, booking |
+| `test_calendar_provider.py` | 10 | Calendar ABC, Google Calendar slots, events, booking |
 | `test_workflow.py` | 26 | Workflow definition, schema validation |
 | `test_debug_tracing.py` | 33 | Debug events, field progress, no PROGRESS leak |
 | `test_e2e_voice_harness.py` | 20 | Voice pipeline, TTS/STT, FSM, response quality |
@@ -388,7 +477,7 @@ voice-calendar-scheduler-FSM/
 │   ├── channels/             # Audio normalization (Twilio, WebRTC)
 │   ├── workflows/            # FSM step definitions
 │   ├── tools/                # Search, calendar, booking tools
-│   ├── calendar_providers/   # Google Calendar (pluggable)
+│   ├── calendar_providers/   # Re-export shim → cal-provider library
 │   └── models/               # Data models (caller state, booking)
 ├── gateway/                  # WebRTC signaling + TURN
 │   ├── server.py             # WebSocket signaling handler
@@ -425,6 +514,10 @@ The project has its own `gateway/` package, which shadows the engine-repo's `gat
 ### Multi-Turn FSM
 
 The engine's WorkflowRunner is designed for single-turn research workflows. `SchedulingSession` adapts this for multi-turn voice conversations by wrapping the Orchestrator per-step with different system prompts and tools, using JSON signal detection to advance between steps.
+
+### Calendar Provider Extraction
+
+The `scheduling/calendar_providers/` directory is a re-export shim — the actual implementations live in the standalone `cal-provider` library (`../cal-provider/`). The FSM tools layer (`tools/calendar.py`, `tools/booking.py`) imports from `scheduling.calendar_providers` as before, and the shim re-exports from `cal_provider`. If you mock-patch Google API calls in tests, target `cal_provider.providers.google.Credentials` and `cal_provider.providers.google.build` (not the shim module).
 
 ### Voice Package Dependencies
 
