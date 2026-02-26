@@ -252,6 +252,10 @@
 
     function hangUp() {
         logMsg("Hanging up");
+        // Tell the server to stop the voice loop before closing the PC
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "hangup" }));
+        }
         cleanupCall();
         setStatus("Ready — press Call", "connected");
     }
@@ -292,6 +296,14 @@
             ws.send(JSON.stringify({ type: "ping" }));
         }
     }, 30000);
+
+    // ── Browser close: best-effort hangup ────────────────────
+
+    window.addEventListener("beforeunload", function () {
+        if (inCall && ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "hangup" }));
+        }
+    });
 
     // ── Start ─────────────────────────────────────────────────
 

@@ -315,6 +315,8 @@ async def _start_voice_loop(session: Session, scheduling_session) -> None:
         speech_confirm_count = 0   # consecutive frames above threshold
         has_speech = interrupted    # If user barged into greeting, their speech is in the buffer
         poll_count = 0
+        no_frames_count = 0        # consecutive polls with 0 frames (dead connection detection)
+        NO_FRAMES_LIMIT = 300      # 300 * 0.1s = 30s with no audio → connection dead
 
         while not scheduling_session.is_done:
             await asyncio.sleep(0.1)
@@ -330,7 +332,13 @@ async def _start_voice_loop(session: Session, scheduling_session) -> None:
                 )
 
             if not real._mic_frames:
+                no_frames_count += 1
+                if no_frames_count >= NO_FRAMES_LIMIT:
+                    log.info("No audio frames for %ds — connection dead, ending voice loop", NO_FRAMES_LIMIT // 10)
+                    scheduling_session._done = True
+                    break
                 continue
+            no_frames_count = 0  # reset — we got frames
 
             # Read live-configurable thresholds each iteration
             # Normal VAD uses lower threshold — user is speaking directly,
@@ -426,6 +434,8 @@ async def handle_signaling_ws(ws: WebSocket) -> None:
     log.info("Signaling WebSocket connected")
 
     session: Session | None = None
+    sched_session = None
+    voice_task: asyncio.Task | None = None
     ice_servers: list = []
 
     try:
@@ -476,7 +486,7 @@ async def handle_signaling_ws(ws: WebSocket) -> None:
                     try:
                         sched_session = _create_scheduling_session()
                         sched_session.start({"transport": "webrtc"})
-                        asyncio.ensure_future(
+                        voice_task = asyncio.ensure_future(
                             _start_voice_loop(session, sched_session)
                         )
                         log.info("Voice loop started")
@@ -498,6 +508,23 @@ async def handle_signaling_ws(ws: WebSocket) -> None:
                         "message": f"WebRTC setup failed: {e}",
                     })
 
+            elif msg_type == "hangup":
+                log.info("Client sent hangup")
+                if sched_session:
+                    sched_session._done = True
+                if voice_task and not voice_task.done():
+                    # Give the voice loop a moment to exit its poll gracefully
+                    try:
+                        await asyncio.wait_for(voice_task, timeout=1.0)
+                    except asyncio.TimeoutError:
+                        voice_task.cancel()
+                    voice_task = None
+                if session:
+                    await session.close()
+                    session = None
+                    log.info("WebRTC session cleaned up after hangup")
+                sched_session = None
+
             elif msg_type == "ping":
                 await ws.send_json({"type": "pong"})
 
@@ -512,6 +539,10 @@ async def handle_signaling_ws(ws: WebSocket) -> None:
     except Exception as e:
         log.error("Signaling error: %s", e)
     finally:
+        if sched_session:
+            sched_session._done = True
+        if voice_task and not voice_task.done():
+            voice_task.cancel()
         if session:
             await session.close()
             log.info("WebRTC session cleaned up")

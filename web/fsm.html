@@ -840,11 +840,26 @@
 
         // ── Sessions polling ──────────────────────────
 
+        var sessionPollFailures = 0;
+        var sessionPollTimer = null;
+
         function loadSessions() {
             adminFetch('/api/fsm/sessions')
-                .then(function(r) { return r.json(); })
+                .then(function(r) {
+                    if (r.status === 401 || r.status === 403) {
+                        sessionPollFailures++;
+                        if (sessionPollFailures >= 3 && sessionPollTimer) {
+                            clearInterval(sessionPollTimer);
+                            sessionPollTimer = null;
+                            console.warn('Session polling stopped — auth failed');
+                        }
+                        return null;
+                    }
+                    sessionPollFailures = 0;
+                    return r.json();
+                })
                 .then(function(data) {
-                    renderSessions(data.sessions, data.count);
+                    if (data) renderSessions(data.sessions, data.count);
                 })
                 .catch(function() { /* silent — poll will retry */ });
         }
@@ -958,7 +973,7 @@
 
         loadSteps();
         loadSessions();
-        setInterval(loadSessions, 3000);
+        sessionPollTimer = setInterval(loadSessions, 3000);
     </script>
 </body>
 </html>
