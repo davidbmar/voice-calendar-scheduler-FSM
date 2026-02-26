@@ -316,19 +316,27 @@ async def _start_voice_loop(session: Session, scheduling_session) -> None:
         has_speech = interrupted    # If user barged into greeting, their speech is in the buffer
         poll_count = 0
         no_frames_count = 0        # consecutive polls with 0 frames (dead connection detection)
-        NO_FRAMES_LIMIT = 300      # 300 * 0.1s = 30s with no audio → connection dead
+        NO_FRAMES_LIMIT = 100      # 100 * 0.1s = 10s with no audio → connection dead
+        DEAD_STATES = {"closed", "failed", "disconnected"}
 
         while not scheduling_session.is_done:
             await asyncio.sleep(0.1)
             poll_count += 1
+
+            # Check if WebRTC peer connection is dead
+            pc_state = getattr(real._pc, "connectionState", None) if real._pc else None
+            if pc_state in DEAD_STATES:
+                log.info("WebRTC connection state is '%s' — ending voice loop", pc_state)
+                scheduling_session._done = True
+                break
 
             # Periodic status log every 2s
             if poll_count % 20 == 0:
                 n_frames = len(real._mic_frames)
                 total_bytes = sum(len(f) for f in real._mic_frames) if n_frames else 0
                 log.info(
-                    "[VAD poll #%d] frames=%d bytes=%d has_speech=%s silence_count=%d recording=%s",
-                    poll_count, n_frames, total_bytes, has_speech, silence_count, real._recording,
+                    "[VAD poll #%d] frames=%d bytes=%d has_speech=%s silence_count=%d recording=%s pc=%s",
+                    poll_count, n_frames, total_bytes, has_speech, silence_count, real._recording, pc_state,
                 )
 
             if not real._mic_frames:
