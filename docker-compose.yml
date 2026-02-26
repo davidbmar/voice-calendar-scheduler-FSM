@@ -8,7 +8,7 @@ services:
     # If using a pre-built image from voice-optimal-RAG:
     # image: voice-optimal-rag:latest
     ports:
-      - "8000:8100"
+      - "9900:8100"
     volumes:
       - rag-data:/data
     environment:

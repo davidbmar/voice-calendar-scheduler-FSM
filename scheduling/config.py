@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     calendar_timezone: str = "America/Chicago"
 
     # RAG
-    rag_service_url: str = "http://localhost:8000"
+    rag_service_url: str = "http://localhost:9900"
 
     # Admin auth
     admin_api_key: str = ""

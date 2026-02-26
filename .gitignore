@@ -11,3 +11,4 @@ docs/project-memory/.index/
 .playwright-mcp/
 engine-repo/models/
 node_modules/
+.tunnel-config

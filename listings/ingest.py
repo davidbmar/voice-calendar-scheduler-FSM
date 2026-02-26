@@ -8,7 +8,7 @@ Usage:
     python -m listings.ingest --data listings/data/austin_apartments.json
 
     # Use a different RAG service URL
-    RAG_SERVICE_URL=http://localhost:8100 python -m listings.ingest
+    RAG_SERVICE_URL=http://localhost:9900 python -m listings.ingest
 """
 
 import argparse
@@ -21,7 +21,7 @@ import httpx
 
 from listings.schema import ApartmentListing
 
-RAG_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:8000")
+RAG_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:9900")
 
 BATCH_SIZE = 50
 

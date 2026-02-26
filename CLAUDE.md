@@ -12,16 +12,16 @@
 ./scripts/setup.sh --quick            # Skip heavy voice packages
 
 # Run
-./scripts/run.sh                      # Start server (default port 8090)
+./scripts/run.sh                      # Start server (default port 9909)
 # Or manually:
-PYTHONPATH=".:engine-repo" .venv/bin/uvicorn scheduling.app:app --port 8090
+PYTHONPATH=".:engine-repo" .venv/bin/uvicorn scheduling.app:app --port 9909
 
 # Test
 PYTHONPATH=".:engine-repo" .venv/bin/python -m pytest tests/ -v
 
 # RAG service (apartment search)
 docker compose up -d rag                      # Start RAG (first boot ~30s for model load)
-curl -sf http://localhost:8000/health          # Verify healthy + 0 documents
+curl -sf http://localhost:9900/health          # Verify healthy + 0 documents
 
 # Ingest listings (one-time — data persists across restarts)
 PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.ingest                                          # Sample data (10 listings)
@@ -29,6 +29,11 @@ PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.ingest --data listings/d
 
 # Import new CSV data (optional — requires Kaggle download)
 PYTHONPATH=".:engine-repo" .venv/bin/python -m listings.import_csv <csv_path> --city Austin --state TX --output listings/data/austin_apartments.json
+
+# Cloudflare Tunnel (public URL for iPhone/desktop testing)
+./scripts/setup_tunnel.sh            # One-time: create named tunnel + optional DNS
+./scripts/run.sh --tunnel             # Start server + tunnel (stable URL if configured)
+./scripts/run.sh --tunnel             # Without setup: quick tunnel (random *.trycloudflare.com URL)
 ```
 
 ## Architecture
@@ -66,7 +71,8 @@ data/workflows/          FSM definitions as JSONL (apartment_viewing.jsonl)
 - **Conversation history pruning**: `session.py` trims `_messages` to last 20 when exceeding 30
 - **JSON signal protocol**: FSM advances when LLM emits fenced JSON blocks with an `intent` field. Works across all LLM providers (Claude/OpenAI/Ollama)
 - **RAG data persists**: Docker volume `voice-calendar-scheduler-fsm_rag-data` survives container restarts. Only re-ingest if the volume is removed or you want different data
-- **RAG port mapping**: docker-compose maps `8000→8100` (FSM expects 8000, RAG container runs on 8100)
+- **RAG port mapping**: docker-compose maps `9900→8100` (FSM expects 9900, RAG container runs on 8100)
+- **Cloudflare Tunnel**: carries HTTP+WebSocket signaling only; WebRTC audio flows peer-to-peer via Twilio TURN. `.tunnel-config` is machine-specific (gitignored). `run.sh --tunnel` skips `exec` so the EXIT trap can kill cloudflared on Ctrl+C
 
 ## Data Flow
 

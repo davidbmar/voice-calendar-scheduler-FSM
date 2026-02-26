@@ -7,7 +7,7 @@ import httpx
 
 from voice_assistant.tools.base import BaseTool
 
-RAG_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:8000")
+RAG_URL = os.environ.get("RAG_SERVICE_URL", "http://localhost:9900")
 
 
 class ApartmentSearchTool(BaseTool):
